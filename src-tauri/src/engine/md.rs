@@ -53,6 +53,9 @@ pub struct SplitDoc<'a> {
     pub head: &'a str,
     pub yaml: Option<&'a str>,
     pub body: &'a str,
+    /// YAML 段在原文中的起始字节偏移。改写单个字段时靠它做原位拼接，
+    /// 分隔行的换行风格（LF / CRLF）因此得以保持。
+    pub yaml_start: usize,
 }
 
 /// 拆分 front matter 与正文。
@@ -69,6 +72,7 @@ pub fn split(text: &str) -> SplitDoc<'_> {
             head: "",
             yaml: None,
             body: text,
+            yaml_start: 0,
         };
     };
 
@@ -93,6 +97,7 @@ pub fn split(text: &str) -> SplitDoc<'_> {
                 head: &text[..head_end],
                 yaml: Some(&rest[..offset]),
                 body: &text[head_end..],
+                yaml_start: open_len,
             };
         }
 
@@ -106,6 +111,7 @@ pub fn split(text: &str) -> SplitDoc<'_> {
         head: "",
         yaml: None,
         body: text,
+        yaml_start: 0,
     }
 }
 
@@ -127,14 +133,98 @@ pub fn replace_body(original: &str, new_body: &str) -> String {
 }
 
 /// 由 front matter 与正文合成一篇新文档。
-///
-/// P0 还没有「新建章节」入口，此函数暂时只被测试使用。
-#[allow(dead_code)]
 pub fn compose(front: &FrontMatter, body: &str) -> String {
     match serde_yaml::to_string(front) {
         Ok(yaml) => format!("---\n{}---\n{}", yaml, body),
         Err(_) => body.to_string(),
     }
+}
+
+/// 在 front matter 中就地改写单个标量字段，其余字节保持不动。
+///
+/// 只处理单行标量：找到行首的 `key:` 整行替换，找不到则插到元数据顶部。
+/// 没有 front matter 时创建一段只含该字段的元数据，正文原样接在后面。
+pub fn set_scalar(original: &str, key: &str, value: &str) -> String {
+    let split = split(original);
+    let Some(yaml) = split.yaml else {
+        return format!(
+            "---\n{}: {}\n---\n{}",
+            key,
+            escape_yaml_scalar(value),
+            original
+        );
+    };
+
+    let next_yaml = upsert_scalar_line(yaml, key, value);
+    let mut out = String::with_capacity(original.len() + next_yaml.len());
+    out.push_str(&original[..split.yaml_start]);
+    out.push_str(&next_yaml);
+    out.push_str(&original[split.yaml_start + yaml.len()..]);
+    out
+}
+
+/// 改写标题。
+pub fn set_title(original: &str, title: &str) -> String {
+    set_scalar(original, "title", title)
+}
+
+/// 整行替换或插入一个标量字段，保留原文件的换行风格。
+fn upsert_scalar_line(yaml: &str, key: &str, value: &str) -> String {
+    let escaped = escape_yaml_scalar(value);
+    let mut out = String::with_capacity(yaml.len() + escaped.len() + 8);
+    let mut replaced = false;
+
+    for line in yaml.split_inclusive('\n') {
+        let content = line.trim_end_matches(['\r', '\n']);
+        let is_target = !replaced
+            && content.len() > key.len()
+            && content.starts_with(key)
+            && content.as_bytes().get(key.len()) == Some(&b':');
+
+        if is_target {
+            let eol = if line.ends_with("\r\n") { "\r\n" } else { "\n" };
+            out.push_str(key);
+            out.push_str(": ");
+            out.push_str(&escaped);
+            out.push_str(eol);
+            replaced = true;
+        } else {
+            out.push_str(line);
+        }
+    }
+
+    if replaced {
+        return out;
+    }
+
+    let eol = if yaml.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut prefixed = String::with_capacity(out.len() + escaped.len() + 8);
+    prefixed.push_str(key);
+    prefixed.push_str(": ");
+    prefixed.push_str(&escaped);
+    prefixed.push_str(eol);
+    prefixed.push_str(&out);
+    prefixed
+}
+
+/// YAML 标量转义。只在必要时加双引号，避免把普通中文标题写成带引号的形式。
+fn escape_yaml_scalar(value: &str) -> String {
+    let needs_quote = value.is_empty()
+        || value.trim() != value
+        || value
+            .chars()
+            .any(|c| matches!(c, ':' | '#' | '"' | '\'' | '\\' | '\n' | '\r' | '\t'))
+        || value.starts_with([
+            '-', '?', '!', '&', '*', '|', '>', '%', '@', '`', '[', ']', '{', '}', ',', '\'',
+            '"',
+        ]);
+
+    if !needs_quote {
+        return value.to_string();
+    }
+
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{}\"", escaped)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,5 +450,82 @@ mod tests {
         assert!(is_cjk('齋'));
         assert!(!is_cjk('A'));
         assert!(!is_cjk('，'));
+    }
+
+    #[test]
+    fn 改标题不动其他字段与正文() {
+        let original = "---\ntitle: 旧名\norder: 3\nstatus: draft\ncustom: 保留\n---\n正文。\n";
+        let next = set_title(original, "新名");
+        assert!(next.contains("title: 新名\n"));
+        assert!(next.contains("order: 3\n"));
+        assert!(next.contains("status: draft\n"));
+        assert!(next.contains("custom: 保留\n"));
+        assert!(next.ends_with("---\n正文。\n"));
+
+        let front = parse_front_matter(split(&next).yaml.unwrap()).unwrap();
+        assert_eq!(front.title.as_deref(), Some("新名"));
+        assert_eq!(front.order, Some(3));
+    }
+
+    #[test]
+    fn 标题含半角冒号时自动加引号且能解析回原值() {
+        let original = "---\ntitle: 旧名\n---\n正文。\n";
+        let next = set_title(original, "卷一: 听风");
+        assert!(next.contains(r#"title: "卷一: 听风""#));
+
+        let front = parse_front_matter(split(&next).yaml.unwrap()).unwrap();
+        assert_eq!(front.title.as_deref(), Some("卷一: 听风"));
+    }
+
+    #[test]
+    fn 全角冒号无需加引号也能解析() {
+        let original = "---\ntitle: 旧名\n---\n正文。\n";
+        let next = set_title(original, "卷一：听风");
+        let front = parse_front_matter(split(&next).yaml.unwrap()).unwrap();
+        assert_eq!(front.title.as_deref(), Some("卷一：听风"));
+    }
+
+    #[test]
+    fn 标题含井号时不被当注释() {
+        let original = "---\ntitle: 旧名\n---\n正文。\n";
+        let next = set_title(original, "第三幕 #2");
+        let front = parse_front_matter(split(&next).yaml.unwrap()).unwrap();
+        assert_eq!(front.title.as_deref(), Some("第三幕 #2"));
+    }
+
+    #[test]
+    fn 无_front_matter_时新建元数据并保留正文() {
+        let original = "纯正文，没有元数据。\n";
+        let next = set_title(original, "楔子");
+        assert!(next.starts_with("---\ntitle: 楔子\n---\n"));
+        assert!(next.ends_with("纯正文，没有元数据。\n"));
+        assert_eq!(split(&next).body, original);
+    }
+
+    #[test]
+    fn 字段不存在时插入到顶部() {
+        let original = "---\norder: 1\n---\n正文。\n";
+        let next = set_title(original, "楔子");
+        assert!(next.starts_with("---\ntitle: 楔子\norder: 1\n---\n"));
+    }
+
+    #[test]
+    fn 改写字段时保持_crlf() {
+        let original = "---\r\ntitle: 旧名\r\norder: 2\r\n---\r\n正文。\r\n";
+        let next = set_title(original, "新名");
+        assert!(next.contains("title: 新名\r\n"));
+        assert!(next.contains("order: 2\r\n"));
+        assert!(next.ends_with("---\r\n正文。\r\n"));
+        assert!(!next.contains("\n\r"), "不应混入孤立的 LF");
+    }
+
+    #[test]
+    fn 只改数字字段时不动标题() {
+        let original = "---\ntitle: 楔子\norder: 1\n---\n正文。\n";
+        let next = set_scalar(original, "order", "7");
+        assert!(next.contains("title: 楔子\n"));
+        assert!(next.contains("order: 7\n"));
+        let front = parse_front_matter(split(&next).yaml.unwrap()).unwrap();
+        assert_eq!(front.order, Some(7));
     }
 }
