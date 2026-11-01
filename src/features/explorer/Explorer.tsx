@@ -18,6 +18,7 @@ export function Explorer() {
   const createDoc = useWorkspace((s) => s.createDoc);
   const renameDoc = useWorkspace((s) => s.renameDoc);
   const deleteDoc = useWorkspace((s) => s.deleteDoc);
+  const moveDoc = useWorkspace((s) => s.moveDoc);
 
   /** 正在新建时，记录目标目录（相对路径，空串代表根目录） */
   const [newDir, setNewDir] = useState<string | null>(null);
@@ -125,9 +126,11 @@ export function Explorer() {
           {groups.map(([dir, chapters]) => (
             <section key={dir || "__root__"} className="chapter-group">
               {dir && <div className="chapter-group-title">{dir}</div>}
-              {chapters.map((chapter) => {
+              {chapters.map((chapter, idx) => {
                 const isActive = chapter.path === activePath;
                 const isRenaming = renaming?.path === chapter.path;
+                const canUp = idx > 0;
+                const canDown = idx < chapters.length - 1;
 
                 return (
                   <div
@@ -169,6 +172,22 @@ export function Explorer() {
                         </button>
 
                         <div className="chapter-actions">
+                          <button
+                            type="button"
+                            title="上移一位"
+                            disabled={!canUp}
+                            onClick={() => void moveDoc(chapter.path, "up")}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            title="下移一位"
+                            disabled={!canDown}
+                            onClick={() => void moveDoc(chapter.path, "down")}
+                          >
+                            ↓
+                          </button>
                           <button
                             type="button"
                             title="重命名（也可双击标题）"

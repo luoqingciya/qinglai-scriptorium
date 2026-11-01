@@ -5,7 +5,15 @@
  * 路径在 Rust 侧经 `safe_join` 校验必须落在稿库根内。
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { DocPayload, FileStamp, SaveOutcome, VaultSnapshot, WordCount } from "./types";
+import type {
+  Direction,
+  DocPayload,
+  FileStamp,
+  PathRename,
+  SaveOutcome,
+  VaultSnapshot,
+  WordCount,
+} from "./types";
 
 export function openVault(path: string): Promise<VaultSnapshot> {
   return invoke<VaultSnapshot>("open_vault", { path });
@@ -28,6 +36,11 @@ export function renameDoc(path: string, title: string): Promise<string> {
 /** 删除一章（移入稿库内 .trash/），返回回收站中的相对路径 */
 export function deleteDoc(path: string): Promise<string> {
   return invoke<string>("delete_doc", { path });
+}
+
+/** 同目录内上移或下移一章，返回发生的路径变化 */
+export function reorderDoc(path: string, direction: Direction): Promise<PathRename[]> {
+  return invoke<PathRename[]>("reorder_doc", { path, direction });
 }
 
 export function readDoc(path: string): Promise<DocPayload> {

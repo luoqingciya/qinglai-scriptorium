@@ -3,6 +3,7 @@
 //! 稿库根目录由用户在运行时选定，所有来自前端的相对路径必须经 `safe_join`
 //! 校验后才允许触碰文件系统，防止路径穿越读到库外文件。
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -133,12 +134,7 @@ pub fn scan(root: &Path) -> Result<VaultSnapshot, String> {
         }
 
         let path = entry.path();
-        let is_markdown = path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.eq_ignore_ascii_case("md"))
-            .unwrap_or(false);
-        if !is_markdown {
+        if !is_markdown(path) {
             continue;
         }
 
@@ -406,6 +402,174 @@ pub fn delete_document(root: &Path, rel: &str) -> Result<String, String> {
 
     fs::rename(&abs, &target).map_err(|e| format!("移入回收站失败：{e}"))?;
     Ok(to_rel(root, &target))
+}
+
+// ---------------------------------------------------------------------------
+// 章节排序
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    Up,
+    Down,
+}
+
+/// 一次重排中发生的路径变化，前端据此修正当前打开的文件。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathRename {
+    pub from: String,
+    pub to: String,
+}
+
+struct ChapterSlot {
+    path: PathBuf,
+    order: i64,
+    title: String,
+    text: String,
+}
+
+fn is_markdown(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.eq_ignore_ascii_case("md"))
+        .unwrap_or(false)
+}
+
+fn collect_chapters(dir: &Path) -> Result<Vec<ChapterSlot>, String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败：{e}"))?;
+    let mut slots = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !is_markdown(&path) {
+            continue;
+        }
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        let (order, title) = {
+            let split = md::split(&text);
+            let front = split.yaml.and_then(md::parse_front_matter).unwrap_or_default();
+            let stem = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let title = front
+                .title
+                .clone()
+                .unwrap_or_else(|| strip_order_prefix(&stem));
+            (front.order.unwrap_or(i64::MAX), title)
+        };
+        slots.push(ChapterSlot {
+            path,
+            order,
+            title,
+            text,
+        });
+    }
+
+    slots.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.path.cmp(&b.path)));
+    Ok(slots)
+}
+
+/// 把一章在同目录内上移或下移一位，返回发生的路径变化。
+///
+/// 排序以 front matter 的 `order` 为准，文件名前缀随之重算 —— 否则在文件管理器里
+/// 看到的顺序会和应用内不一致。
+///
+/// 只改写 order 或文件名真正变化的文件，因此一次移动通常只动两个文件：
+/// 按位置重编号时，未换位的章节其序号本就不变。这同时顺带修掉序号空洞与重复。
+pub fn reorder_document(
+    root: &Path,
+    rel: &str,
+    direction: Direction,
+) -> Result<Vec<PathRename>, String> {
+    let abs = safe_join(root, rel).ok_or_else(|| format!("非法路径：{rel}"))?;
+    if !abs.is_file() {
+        return Err(format!("文件不存在：{rel}"));
+    }
+    let dir = abs
+        .parent()
+        .ok_or_else(|| "目标没有父目录".to_string())?
+        .to_path_buf();
+
+    let mut slots = collect_chapters(&dir)?;
+    let index = slots
+        .iter()
+        .position(|s| s.path == abs)
+        .ok_or_else(|| format!("目标不在该目录：{rel}"))?;
+
+    let neighbor = match direction {
+        Direction::Up if index > 0 => index - 1,
+        Direction::Down if index + 1 < slots.len() => index + 1,
+        // 已在头尾，无需移动
+        _ => return Ok(Vec::new()),
+    };
+    slots.swap(index, neighbor);
+
+    // 1. 按新位置重编号，只写真正变化的文件
+    for (i, slot) in slots.iter_mut().enumerate() {
+        let new_order = (i + 1) as i64;
+        if slot.order == new_order {
+            continue;
+        }
+        slot.text = md::set_scalar(&slot.text, "order", &new_order.to_string());
+        slot.order = new_order;
+    }
+    for slot in &slots {
+        let current = fs::read_to_string(&slot.path).map_err(|e| format!("读取失败：{e}"))?;
+        if current != slot.text {
+            atomic::write_atomic(&slot.path, slot.text.as_bytes())
+                .map_err(|e| format!("写入失败：{e}"))?;
+        }
+    }
+
+    // 2. 两阶段改名：先把要动的文件挪到临时名，腾空所有目标位，
+    //    否则两章互换文件名时会互相占用。
+    let mut pending: Vec<(usize, PathBuf)> = Vec::new();
+    for (i, slot) in slots.iter().enumerate() {
+        let desired = dir.join(format!(
+            "{:03}-{}.md",
+            i + 1,
+            sanitize_filename(&slot.title)
+        ));
+        if desired == slot.path {
+            continue;
+        }
+        let temp = dir.join(format!(".qcl-reorder-{i}-{}.tmp", std::process::id()));
+        fs::rename(&slot.path, &temp).map_err(|e| format!("重排改名失败：{e}"))?;
+        pending.push((i, temp));
+    }
+
+    // 3. 依次落位。留在原位的文件先占住自己的名字，重名章节自动加后缀。
+    let mut occupied: HashSet<PathBuf> = slots
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !pending.iter().any(|(pi, _)| pi == i))
+        .map(|(_, s)| s.path.clone())
+        .collect();
+
+    let mut renames = Vec::new();
+    for (i, temp) in pending {
+        let slot = &slots[i];
+        let base = format!("{:03}-{}", i + 1, sanitize_filename(&slot.title));
+
+        let mut name = format!("{base}.md");
+        let mut seq = 1;
+        while occupied.contains(&dir.join(&name)) {
+            seq += 1;
+            name = format!("{base}-{seq}.md");
+        }
+
+        let target = dir.join(&name);
+        fs::rename(&temp, &target).map_err(|e| format!("重排落位失败：{e}"))?;
+        occupied.insert(target.clone());
+        renames.push(PathRename {
+            from: to_rel(root, &slot.path),
+            to: to_rel(root, &target),
+        });
+    }
+
+    Ok(renames)
 }
 
 #[cfg(test)]
@@ -694,5 +858,157 @@ mod tests {
         assert!(create_document(dir.path(), "../外面", "楔子").is_err());
         assert!(delete_document(dir.path(), "../外面.md").is_err());
         assert!(rename_document(dir.path(), "../外面.md", "新名").is_err());
+    }
+
+    // ---------------------------------------------------------------- 排序
+
+    fn 造三章(root: &Path) -> Vec<String> {
+        vec![
+            create_document(root, "卷一", "甲").unwrap(),
+            create_document(root, "卷一", "乙").unwrap(),
+            create_document(root, "卷一", "丙").unwrap(),
+        ]
+    }
+
+    fn 目录顺序(root: &Path) -> Vec<String> {
+        scan(root)
+            .unwrap()
+            .chapters
+            .into_iter()
+            .map(|c| c.title)
+            .collect()
+    }
+
+    #[test]
+    fn 上移一位并重算文件名前缀() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let chapters = 造三章(root);
+        assert_eq!(目录顺序(root), vec!["甲", "乙", "丙"]);
+
+        // 把「乙」上移
+        let renames = reorder_document(root, &chapters[1], Direction::Up).unwrap();
+        assert_eq!(目录顺序(root), vec!["乙", "甲", "丙"]);
+
+        // 只动换位的两个文件
+        assert_eq!(renames.len(), 2, "实际: {renames:?}");
+        assert!(root.join("卷一/001-乙.md").is_file());
+        assert!(root.join("卷一/002-甲.md").is_file());
+        assert!(root.join("卷一/003-丙.md").is_file());
+
+        // front matter 的 order 与文件名前缀一致
+        let text = fs::read_to_string(root.join("卷一/001-乙.md")).unwrap();
+        let front = md::parse_front_matter(md::split(&text).yaml.unwrap()).unwrap();
+        assert_eq!(front.order, Some(1));
+        assert_eq!(front.title.as_deref(), Some("乙"));
+    }
+
+    #[test]
+    fn 下移一位() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let chapters = 造三章(root);
+
+        reorder_document(root, &chapters[0], Direction::Down).unwrap();
+        assert_eq!(目录顺序(root), vec!["乙", "甲", "丙"]);
+    }
+
+    #[test]
+    fn 在头尾移动无变化() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let chapters = 造三章(root);
+
+        assert!(reorder_document(root, &chapters[0], Direction::Up).unwrap().is_empty());
+        assert!(reorder_document(root, &chapters[2], Direction::Down).unwrap().is_empty());
+        assert_eq!(目录顺序(root), vec!["甲", "乙", "丙"]);
+    }
+
+    #[test]
+    fn 重排后正文不受影响() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let chapters = 造三章(root);
+        fs::write(
+            root.join(&chapters[1]),
+            "---\ntitle: 乙\norder: 2\ncustom: 保留\n---\n乙的正文。\n",
+        )
+        .unwrap();
+
+        reorder_document(root, &chapters[1], Direction::Up).unwrap();
+
+        let text = fs::read_to_string(root.join("卷一/001-乙.md")).unwrap();
+        assert_eq!(md::split(&text).body, "乙的正文。\n");
+        assert!(text.contains("custom: 保留"), "自定义字段不能丢");
+        assert!(text.contains("title: 乙"));
+    }
+
+    #[test]
+    fn 序号有空洞时重排会归一化() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "卷一/001-甲.md", "---\ntitle: 甲\norder: 1\n---\n");
+        write(root, "卷一/002-乙.md", "---\ntitle: 乙\norder: 7\n---\n");
+        write(root, "卷一/003-丙.md", "---\ntitle: 丙\norder: 9\n---\n");
+
+        // 丙(9) 上移 → 顺序变为 甲, 丙, 乙，重编号为 1,2,3
+        reorder_document(root, "卷一/003-丙.md", Direction::Up).unwrap();
+        assert_eq!(目录顺序(root), vec!["甲", "丙", "乙"]);
+        assert!(root.join("卷一/002-丙.md").is_file());
+        assert!(root.join("卷一/003-乙.md").is_file());
+    }
+
+    #[test]
+    fn 同名章节重排不会互相覆盖() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "卷一/001-楔子.md", "---\ntitle: 楔子\norder: 1\n---\n甲内容\n");
+        write(root, "卷一/002-楔子.md", "---\ntitle: 楔子\norder: 2\n---\n乙内容\n");
+
+        reorder_document(root, "卷一/002-楔子.md", Direction::Up).unwrap();
+
+        // 两个文件都还在，内容没有互相覆盖
+        let a = fs::read_to_string(root.join("卷一/001-楔子.md")).unwrap();
+        let b = fs::read_to_string(root.join("卷一/002-楔子.md")).unwrap();
+        assert!(a.contains("乙内容"), "实际: {a:?}");
+        assert!(b.contains("甲内容"), "实际: {b:?}");
+    }
+
+    #[test]
+    fn 无_front_matter_的章节也能参与重排() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "卷一/001-甲.md", "---\ntitle: 甲\norder: 1\n---\n");
+        write(root, "卷一/乙.md", "没有元数据的正文。\n");
+
+        // 无元数据的排在最后（order = i64::MAX）
+        assert_eq!(目录顺序(root), vec!["甲", "乙"]);
+
+        reorder_document(root, "卷一/乙.md", Direction::Up).unwrap();
+        assert_eq!(目录顺序(root), vec!["乙", "甲"]);
+
+        let text = fs::read_to_string(root.join("卷一/001-乙.md")).unwrap();
+        assert!(text.starts_with("---\n"), "应补上元数据: {text:?}");
+        assert_eq!(md::split(&text).body, "没有元数据的正文。\n");
+    }
+
+    #[test]
+    fn 只影响同目录不波及其他目录() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        造三章(root);
+        write(root, "卷二/001-丁.md", "---\ntitle: 丁\norder: 1\n---\n");
+
+        reorder_document(root, "卷一/002-乙.md", Direction::Up).unwrap();
+        assert!(root.join("卷二/001-丁.md").is_file(), "别的目录不该被动");
+    }
+
+    #[test]
+    fn 重排拒绝越界路径与非法方向() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        造三章(root);
+        assert!(reorder_document(root, "../外面.md", Direction::Up).is_err());
+        assert!(reorder_document(root, "卷一/不存在.md", Direction::Up).is_err());
     }
 }

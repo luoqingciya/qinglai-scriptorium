@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import * as ipc from "../lib/ipc";
-import type { DocPayload, VaultSnapshot, WordCount } from "../lib/types";
+import type { Direction, DocPayload, VaultSnapshot, WordCount } from "../lib/types";
 
 /** 自动保存防抖间隔。800ms 是「几乎感觉不到延迟」与「不会每敲一个字都写盘」的折中。 */
 export const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -28,6 +28,7 @@ interface WorkspaceState {
   createDoc: (dir: string, title: string) => Promise<void>;
   renameDoc: (path: string, title: string) => Promise<void>;
   deleteDoc: (path: string) => Promise<void>;
+  moveDoc: (path: string, direction: Direction) => Promise<void>;
   setBody: (markdown: string) => void;
   adoptBaseline: (markdown: string) => void;
   flush: () => Promise<void>;
@@ -142,6 +143,24 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         await ipc.deleteDoc(path);
         if (wasActive) clearActive();
         await get().refresh();
+      } catch (err) {
+        set({ error: String(err) });
+      }
+    },
+
+    moveDoc: async (path, direction) => {
+      try {
+        // 重排会改文件名，先落盘再动
+        await get().flush();
+        const renames = await ipc.reorderDoc(path, direction);
+        if (renames.length === 0) return;
+        await get().refresh();
+
+        // 当前打开的文件可能因换位而改名，需要按新路径重新载入
+        const active = get().activePath;
+        if (!active) return;
+        const hit = renames.find((r) => r.from === active);
+        if (hit) await loadDoc(hit.to);
       } catch (err) {
         set({ error: String(err) });
       }

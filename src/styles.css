@@ -191,16 +191,22 @@ button {
 }
 
 .chapter-actions button {
-  padding: 2px 6px;
+  padding: 2px 5px;
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-faint);
   border-radius: 4px;
   transition: background 0.12s, color 0.12s;
 }
 
-.chapter-actions button:hover {
+.chapter-actions button:hover:not(:disabled) {
   background: var(--bg-panel);
   color: var(--text);
+}
+
+.chapter-actions button:disabled {
+  opacity: 0.25;
+  cursor: default;
 }
 
 .chapter-actions button.is-danger {

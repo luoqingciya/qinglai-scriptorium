@@ -67,3 +67,12 @@ export type SaveOutcome =
   | { kind: "saved"; stamp: FileStamp; words: WordCount }
   | { kind: "conflict"; stamp: FileStamp }
   | { kind: "unchanged"; stamp: FileStamp };
+
+/** 章节重排方向 */
+export type Direction = "up" | "down";
+
+/** 一次重排中发生的路径变化，用于修正当前打开的文件 */
+export interface PathRename {
+  from: string;
+  to: string;
+}
