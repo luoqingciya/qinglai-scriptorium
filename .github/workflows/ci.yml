@@ -3,8 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+  # 不限目标分支：stacked PR（指向特性分支）也必须跑 CI
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
