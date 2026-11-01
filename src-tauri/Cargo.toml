@@ -1,0 +1,35 @@
+[package]
+name = "qinglai-scriptorium"
+version = "0.1.0"
+description = "清籁斋 · 面向长篇小说与笔记的个人写作工作台"
+authors = ["luoqingci"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "qinglai_scriptorium_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+ulid = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev]
+# 开发期依赖不优化会让 tauri 相关 crate 编译极慢
+incremental = true
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,421 @@
+:root {
+  --bg: #14141c;
+  --bg-panel: #191922;
+  --bg-hover: #22222f;
+  --bg-active: #2a2430;
+  --border: #2a2a38;
+  --text: #e8e6e1;
+  --text-dim: #948fa2;
+  --text-faint: #6b6678;
+  --accent: #c04a38;
+  --accent-soft: rgba(192, 74, 56, 0.14);
+  --ok: #5dc9a0;
+  --warn: #e0a94a;
+  --err: #e2685c;
+
+  --font-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Source Han Serif CN",
+    "Songti SC", "SimSun", Georgia, serif;
+  --font-sans: "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI",
+    system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- 布局 */
+
+.app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+}
+
+.workspace {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------ 目录树 */
+
+.explorer {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+}
+
+.explorer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.explorer-title {
+  flex: 1;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghost-button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ghost-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.explorer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 24px;
+}
+
+.explorer-empty {
+  padding: 20px 16px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.explorer-empty p {
+  margin: 0 0 8px;
+}
+
+.explorer-empty .hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.chapter-group + .chapter-group {
+  margin-top: 12px;
+}
+
+.chapter-group-title {
+  padding: 6px 16px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 16px 7px 20px;
+  text-align: left;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+
+.chapter-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.chapter-item.is-active {
+  background: var(--bg-active);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.chapter-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chapter-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter-status {
+  color: var(--warn);
+}
+
+/* -------------------------------------------------------------- 编辑区 */
+
+.editor-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.editor-page {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 56px 40px 40vh;
+}
+
+.editor-host {
+  min-height: 200px;
+}
+
+.editor-host .milkdown {
+  display: block;
+}
+
+.editor-host .ProseMirror {
+  outline: none;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.9;
+  color: var(--text);
+  letter-spacing: 0.01em;
+  caret-color: var(--accent);
+}
+
+/* 段首缩进交给 CSS 渲染，存储层一个缩进字符都不写 */
+.editor-host .ProseMirror p {
+  text-indent: 2em;
+  margin: 0 0 0.55em;
+}
+
+.editor-host .ProseMirror h1,
+.editor-host .ProseMirror h2,
+.editor-host .ProseMirror h3,
+.editor-host .ProseMirror h4 {
+  text-indent: 0;
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 1.6em 0 0.8em;
+}
+
+.editor-host .ProseMirror h1 {
+  font-size: 1.5em;
+}
+
+.editor-host .ProseMirror h2 {
+  font-size: 1.25em;
+}
+
+.editor-host .ProseMirror h3 {
+  font-size: 1.1em;
+}
+
+.editor-host .ProseMirror blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 2px solid var(--border);
+  color: var(--text-dim);
+}
+
+.editor-host .ProseMirror blockquote p,
+.editor-host .ProseMirror li p,
+.editor-host .ProseMirror li {
+  text-indent: 0;
+}
+
+.editor-host .ProseMirror ul,
+.editor-host .ProseMirror ol {
+  padding-left: 1.6em;
+  margin: 0.6em 0;
+}
+
+.editor-host .ProseMirror code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-hover);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.editor-host .ProseMirror pre {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+
+.editor-host .ProseMirror pre code {
+  background: none;
+  padding: 0;
+}
+
+.editor-host .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
+}
+
+.editor-host .ProseMirror a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-soft);
+}
+
+.editor-host .ProseMirror ::selection {
+  background: var(--accent-soft);
+}
+
+/* ------------------------------------------------------------ 空状态 */
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-faint);
+}
+
+.empty-state h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* -------------------------------------------------------------- 提示条 */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.banner-error {
+  background: rgba(226, 104, 92, 0.1);
+  color: var(--err);
+}
+
+.banner span {
+  flex: 1;
+}
+
+/* -------------------------------------------------------------- 状态栏 */
+
+.statusbar {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+
+.status-spacer {
+  flex: 1;
+}
+
+.status-sep {
+  width: 1px;
+  height: 11px;
+  background: var(--border);
+}
+
+.status-save.is-saved {
+  color: var(--ok);
+}
+
+.status-save.is-saving,
+.status-save.is-dirty {
+  color: var(--warn);
+}
+
+.status-save.is-conflict,
+.status-save.is-error {
+  color: var(--err);
+}
+
+/* ------------------------------------------------------------ 滚动条 */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2f2f3d;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3d3d4d;
+  background-clip: content-box;
+}

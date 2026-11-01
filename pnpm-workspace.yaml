@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: set this to true or false
+# pnpm 11 起，构建脚本白名单等设置从 package.json 迁到此处
+onlyBuiltDependencies:
+  - esbuild
