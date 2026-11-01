@@ -42,3 +42,32 @@ pub fn scan_vault(state: State<'_, AppState>) -> Result<engine_vault::VaultSnaps
     let root = require_root(&state)?;
     engine_vault::scan(&root)
 }
+
+/// 在指定目录下新建一章，返回新文件的相对路径。
+#[tauri::command]
+pub fn create_doc(
+    dir: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    engine_vault::create_document(&root, &dir, &title)
+}
+
+/// 重命名一章，返回重命名后的相对路径（文件名可能变化）。
+#[tauri::command]
+pub fn rename_doc(
+    path: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    engine_vault::rename_document(&root, &path, &title)
+}
+
+/// 删除一章（移入稿库内 `.trash/`），返回回收站中的相对路径。
+#[tauri::command]
+pub fn delete_doc(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    let root = require_root(&state)?;
+    engine_vault::delete_document(&root, &path)
+}

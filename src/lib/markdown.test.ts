@@ -77,6 +77,20 @@ describe("Markdown 往返", () => {
     expect(roundtrip(once)).toBe(once);
   });
 
+  it("段内折行内容不丢，只是表示形式统一", () => {
+    // 决策：不为软换行做自定义序列化规则。
+    // 中文小说的对话分行靠换段而非段内折行，段内折行属于少数场景，
+    // 规范化一次之后表示形式固定，内容不会丢失，因此接受 remark 的默认行为。
+    const src = "他说：「走吧。」  \n她没应声。\n";
+    const once = roundtrip(src);
+
+    expect(once).toContain("他说：「走吧。」\\");
+    expect(once).toContain("她没应声。");
+    // 两行没有被合并成一段
+    expect(once.split("\n").filter((l) => l.trim().length > 0)).toHaveLength(2);
+    expect(roundtrip(once)).toBe(once);
+  });
+
   it("连续空行折叠为单个空行", () => {
     const src = "第一段。\n\n\n\n第二段。\n";
     const out = roundtrip(src);

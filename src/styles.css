@@ -145,26 +145,93 @@ button {
   white-space: nowrap;
 }
 
-.chapter-item {
+.chapter-row {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  transition: background 0.12s;
+}
+
+.chapter-row:hover {
+  background: var(--bg-hover);
+}
+
+.chapter-row.is-active {
+  background: var(--bg-active);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.chapter-main {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  width: 100%;
-  padding: 7px 16px 7px 20px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 4px 7px 20px;
   text-align: left;
   color: var(--text-dim);
+  transition: color 0.12s;
+}
+
+.chapter-row:hover .chapter-main,
+.chapter-row.is-active .chapter-main {
+  color: var(--text);
+}
+
+.chapter-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.chapter-row:hover .chapter-actions,
+.chapter-row.is-active .chapter-actions {
+  opacity: 1;
+}
+
+.chapter-actions button {
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  border-radius: 4px;
   transition: background 0.12s, color 0.12s;
 }
 
-.chapter-item:hover {
-  background: var(--bg-hover);
+.chapter-actions button:hover {
+  background: var(--bg-panel);
   color: var(--text);
 }
 
-.chapter-item.is-active {
-  background: var(--bg-active);
+.chapter-actions button.is-danger {
+  background: var(--accent);
+  color: #fff;
+}
+
+.inline-create {
+  padding: 6px 12px 10px;
+}
+
+.inline-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
   color: var(--text);
-  box-shadow: inset 2px 0 0 var(--accent);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.chapter-row > .inline-input {
+  margin: 4px 8px 4px 20px;
+}
+
+.inline-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .chapter-name {

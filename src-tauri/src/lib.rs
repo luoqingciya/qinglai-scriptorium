@@ -25,6 +25,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::vault::open_vault,
             commands::vault::scan_vault,
+            commands::vault::create_doc,
+            commands::vault::rename_doc,
+            commands::vault::delete_doc,
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::stats::count_words,
