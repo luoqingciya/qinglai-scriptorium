@@ -9,6 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
+use super::atomic;
 use super::md::{self, DocStatus};
 
 /// 稿库级配置，来自 `<vault>/_vault.yaml`。缺失时全部使用默认值。
@@ -203,6 +204,210 @@ fn strip_order_prefix(stem: &str) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 章节增删改
+// ---------------------------------------------------------------------------
+
+/// Windows 保留设备名，用作文件名会直接失败。
+const RESERVED_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// 把标题转成可安全落盘的文件名片段。
+///
+/// 中文原样保留，只替换路径分隔符与 Windows 非法字符，避免用户输入 `卷一/楔子`
+/// 时把文件写到别的目录去。
+pub fn sanitize_filename(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '·',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .collect();
+
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    let limited: String = trimmed.chars().take(60).collect();
+    if limited.is_empty() {
+        return "未命名".to_string();
+    }
+    if RESERVED_NAMES
+        .iter()
+        .any(|r| r.eq_ignore_ascii_case(&limited))
+    {
+        return format!("_{limited}");
+    }
+    limited
+}
+
+/// 取文件名开头的数字串，作为排序前缀。
+fn leading_digits(stem: &str) -> &str {
+    let end = stem
+        .char_indices()
+        .find(|(_, c)| !c.is_ascii_digit())
+        .map(|(i, _)| i)
+        .unwrap_or(stem.len());
+    &stem[..end]
+}
+
+/// 目录内下一个可用的 order 值。
+fn next_order_in_dir(dir: &Path) -> Result<i64, String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("读取目录失败：{e}"))?;
+    let mut max_order = 0i64;
+    let mut count = 0i64;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("md")) != Some(true)
+        {
+            continue;
+        }
+        count += 1;
+        if let Ok(text) = fs::read_to_string(&path) {
+            let split = md::split(&text);
+            if let Some(front) = split.yaml.and_then(md::parse_front_matter) {
+                if let Some(order) = front.order {
+                    max_order = max_order.max(order);
+                }
+            }
+        }
+    }
+
+    Ok(max_order.max(count) + 1)
+}
+
+/// 在指定目录下新建一章，返回其相对路径。
+pub fn create_document(root: &Path, rel_dir: &str, title: &str) -> Result<String, String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("标题不能为空".to_string());
+    }
+
+    let dir = if rel_dir.trim().is_empty() {
+        root.to_path_buf()
+    } else {
+        safe_join(root, rel_dir).ok_or_else(|| format!("非法目录：{rel_dir}"))?
+    };
+    fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败：{e}"))?;
+
+    let order = next_order_in_dir(&dir)?;
+    let stem = sanitize_filename(title);
+
+    let mut filename = format!("{order:03}-{stem}.md");
+    let mut seq = 1;
+    while dir.join(&filename).exists() {
+        seq += 1;
+        filename = format!("{order:03}-{stem}-{seq}.md");
+    }
+
+    let abs = dir.join(&filename);
+    let front = md::FrontMatter {
+        id: Some(ulid::Ulid::new().to_string()),
+        title: Some(title.to_string()),
+        order: Some(order),
+        status: Some(DocStatus::Draft),
+        ..Default::default()
+    };
+    let text = md::compose(&front, "");
+
+    // 用 create_new 语义写入，避免并发或重名时静默覆盖已有稿件
+    if abs.exists() {
+        return Err(format!("文件已存在：{filename}"));
+    }
+    atomic::write_atomic(&abs, text.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
+
+    Ok(to_rel(root, &abs))
+}
+
+/// 重命名一章：改 front matter 的 title，并让文件名跟随标题。
+///
+/// 排序前缀（`001-`）原样保留，避免重命名打乱目录顺序。
+pub fn rename_document(root: &Path, rel: &str, new_title: &str) -> Result<String, String> {
+    let new_title = new_title.trim();
+    if new_title.is_empty() {
+        return Err("标题不能为空".to_string());
+    }
+
+    let abs = safe_join(root, rel).ok_or_else(|| format!("非法路径：{rel}"))?;
+    let text = fs::read_to_string(&abs).map_err(|e| format!("读取失败：{e}"))?;
+
+    let next_text = md::set_title(&text, new_title);
+    atomic::write_atomic(&abs, next_text.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
+
+    let dir = abs.parent().ok_or_else(|| "目标没有父目录".to_string())?;
+    let old_name = abs
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let old_stem = abs
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let prefix = leading_digits(&old_stem).to_string();
+    let stem = sanitize_filename(new_title);
+
+    let build_name = |seq: usize| -> String {
+        let base = if prefix.is_empty() {
+            stem.clone()
+        } else {
+            format!("{prefix}-{stem}")
+        };
+        if seq == 1 {
+            format!("{base}.md")
+        } else {
+            format!("{base}-{seq}.md")
+        }
+    };
+
+    let mut new_name = build_name(1);
+    if new_name == old_name {
+        return Ok(to_rel(root, &abs));
+    }
+
+    let mut seq = 1;
+    let mut target = dir.join(&new_name);
+    while target.exists() {
+        seq += 1;
+        new_name = build_name(seq);
+        target = dir.join(&new_name);
+    }
+
+    fs::rename(&abs, &target).map_err(|e| format!("重命名文件失败：{e}"))?;
+    Ok(to_rel(root, &target))
+}
+
+/// 把一章移入稿库内的回收站，返回它在回收站里的相对路径。
+///
+/// 刻意不做物理删除：写作工具误删一章的代价远高于留一点垃圾。
+/// 回收站目录以 `.` 开头，扫描时会被自动跳过。
+pub fn delete_document(root: &Path, rel: &str) -> Result<String, String> {
+    let abs = safe_join(root, rel).ok_or_else(|| format!("非法路径：{rel}"))?;
+    if !abs.is_file() {
+        return Err(format!("文件不存在：{rel}"));
+    }
+
+    let trash = root.join(".trash");
+    fs::create_dir_all(&trash).map_err(|e| format!("创建回收站失败：{e}"))?;
+
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let name = abs
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "doc.md".to_string());
+
+    let mut target = trash.join(format!("{stamp}-{name}"));
+    let mut seq = 1;
+    while target.exists() {
+        seq += 1;
+        target = trash.join(format!("{stamp}-{seq}-{name}"));
+    }
+
+    fs::rename(&abs, &target).map_err(|e| format!("移入回收站失败：{e}"))?;
+    Ok(to_rel(root, &target))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,5 +550,149 @@ mod tests {
         let snap = scan(root).unwrap();
         assert_eq!(snap.chapters[0].words, 3);
         assert_eq!(snap.chapters[0].title, "楔子");
+    }
+
+    #[test]
+    fn 新建章节带序号与元数据() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let rel = create_document(root, "小说/卷一", "楔子").unwrap();
+        assert_eq!(rel, "小说/卷一/001-楔子.md");
+
+        let text = fs::read_to_string(root.join(&rel)).unwrap();
+        let front = md::parse_front_matter(md::split(&text).yaml.unwrap()).unwrap();
+        assert_eq!(front.title.as_deref(), Some("楔子"));
+        assert_eq!(front.order, Some(1));
+        assert_eq!(front.status, Some(DocStatus::Draft));
+        assert!(front.id.is_some(), "应生成 ULID");
+        assert_eq!(md::split(&text).body, "", "新章正文应为空");
+    }
+
+    #[test]
+    fn 连续新建序号递增() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        assert_eq!(create_document(root, "卷一", "楔子").unwrap(), "卷一/001-楔子.md");
+        assert_eq!(create_document(root, "卷一", "开端").unwrap(), "卷一/002-开端.md");
+        assert_eq!(create_document(root, "卷一", "夜航").unwrap(), "卷一/003-夜航.md");
+    }
+
+    #[test]
+    fn 新建到根目录() {
+        let dir = tempfile::tempdir().unwrap();
+        let rel = create_document(dir.path(), "", "灵感").unwrap();
+        assert_eq!(rel, "001-灵感.md");
+    }
+
+    #[test]
+    fn 标题里的路径分隔符不会造成目录穿越() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let rel = create_document(root, "卷一", "../../越界/楔子").unwrap();
+        // 分隔符被替换成中点，文件仍落在指定目录内
+        assert!(rel.starts_with("卷一/"), "实际: {rel}");
+        let abs = root.join(&rel);
+        assert!(abs.is_file());
+        assert_eq!(abs.parent().unwrap(), root.join("卷一"));
+        // 库外不应出现任何文件
+        assert!(!root.parent().unwrap().join("越界").exists());
+    }
+
+    #[test]
+    fn 空标题被拒绝() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(create_document(dir.path(), "卷一", "   ").is_err());
+    }
+
+    #[test]
+    fn 文件名清洗规则() {
+        assert_eq!(sanitize_filename("楔子"), "楔子");
+        assert_eq!(sanitize_filename("卷一/楔子"), "卷一·楔子");
+        assert_eq!(sanitize_filename("a:b*c?d"), "a·b·c·d");
+        assert_eq!(sanitize_filename("  "), "未命名");
+        assert_eq!(sanitize_filename("..."), "未命名");
+        assert_eq!(sanitize_filename("CON"), "_CON");
+        // 超长标题被截断
+        assert_eq!(sanitize_filename(&"字".repeat(100)).chars().count(), 60);
+    }
+
+    #[test]
+    fn 重命名同时改标题与文件名() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let rel = create_document(root, "卷一", "楔子").unwrap();
+        fs::write(root.join(&rel), "---\ntitle: 楔子\norder: 1\ncustom: 保留\n---\n旧正文。\n")
+            .unwrap();
+
+        let next = rename_document(root, &rel, "开端").unwrap();
+        assert_eq!(next, "卷一/001-开端.md");
+        assert!(!root.join(&rel).exists(), "旧文件名应已不存在");
+
+        let text = fs::read_to_string(root.join(&next)).unwrap();
+        let front = md::parse_front_matter(md::split(&text).yaml.unwrap()).unwrap();
+        assert_eq!(front.title.as_deref(), Some("开端"));
+        assert_eq!(front.order, Some(1));
+        // 正文与其他自定义字段都不受影响
+        assert_eq!(md::split(&text).body, "旧正文。\n");
+        assert!(text.contains("custom: 保留"));
+    }
+
+    #[test]
+    fn 重命名为同名文件时原地不动() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let rel = create_document(root, "卷一", "楔子").unwrap();
+        let next = rename_document(root, &rel, "楔子").unwrap();
+        assert_eq!(next, rel);
+        assert!(root.join(&rel).is_file());
+    }
+
+    #[test]
+    fn 重命名遇到同名文件自动加序号() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let a = create_document(root, "卷一", "甲").unwrap();
+        assert_eq!(a, "卷一/001-甲.md");
+
+        // 手工造一个同前缀同标题的文件，模拟历史遗留的同名稿件
+        fs::create_dir_all(root.join("卷一")).unwrap();
+        fs::write(root.join("卷一/001-乙.md"), "---\ntitle: 乙\n---\n").unwrap();
+
+        let next = rename_document(root, &a, "乙").unwrap();
+        assert_eq!(next, "卷一/001-乙-2.md");
+        assert!(root.join(&next).is_file());
+        assert!(root.join("卷一/001-乙.md").is_file(), "原有文件不能被覆盖");
+    }
+
+    #[test]
+    fn 删除是移入回收站而非物理删除() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let rel = create_document(root, "卷一", "楔子").unwrap();
+
+        let trashed = delete_document(root, &rel).unwrap();
+        assert!(trashed.starts_with(".trash/"), "实际: {trashed}");
+        assert!(!root.join(&rel).exists());
+        assert!(root.join(&trashed).is_file(), "回收站里应还能找到");
+
+        // 回收站目录以 . 开头，扫描时被跳过
+        let snap = scan(root).unwrap();
+        assert_eq!(snap.chapters.len(), 0);
+    }
+
+    #[test]
+    fn 删除不存在的文件报错() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(delete_document(dir.path(), "不存在.md").is_err());
+    }
+
+    #[test]
+    fn 新建与删除都拒绝越界路径() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(create_document(dir.path(), "../外面", "楔子").is_err());
+        assert!(delete_document(dir.path(), "../外面.md").is_err());
+        assert!(rename_document(dir.path(), "../外面.md", "新名").is_err());
     }
 }

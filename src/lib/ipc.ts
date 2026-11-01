@@ -15,6 +15,21 @@ export function scanVault(): Promise<VaultSnapshot> {
   return invoke<VaultSnapshot>("scan_vault");
 }
 
+/** 在指定目录（相对稿库根，空串表示根目录）新建一章，返回新文件相对路径 */
+export function createDoc(dir: string, title: string): Promise<string> {
+  return invoke<string>("create_doc", { dir, title });
+}
+
+/** 重命名一章，返回重命名后的相对路径（文件名可能随之变化） */
+export function renameDoc(path: string, title: string): Promise<string> {
+  return invoke<string>("rename_doc", { path, title });
+}
+
+/** 删除一章（移入稿库内 .trash/），返回回收站中的相对路径 */
+export function deleteDoc(path: string): Promise<string> {
+  return invoke<string>("delete_doc", { path });
+}
+
 export function readDoc(path: string): Promise<DocPayload> {
   return invoke<DocPayload>("read_doc", { path });
 }
