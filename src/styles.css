@@ -428,6 +428,118 @@ button {
   flex: 1;
 }
 
+/* ---------------------------------------------------------------- 检索 */
+
+.search-box {
+  position: relative;
+  padding: 4px 12px 10px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 26px 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+}
+
+.search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.search-clear {
+  position: absolute;
+  right: 18px;
+  top: 8px;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  font-size: 14px;
+  color: var(--text-faint);
+  border-radius: 4px;
+}
+
+.search-clear:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.search-results {
+  padding-bottom: 24px;
+}
+
+.search-hit {
+  display: block;
+  width: 100%;
+  padding: 8px 16px 10px 20px;
+  text-align: left;
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.search-hit:hover {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+
+.search-hit-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.search-hit-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hit-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.search-hit-dir {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hit-snippet {
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.search-hit-snippet mark {
+  padding: 0 1px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 2px;
+}
+
 /* -------------------------------------------------------------- 状态栏 */
 
 .statusbar {

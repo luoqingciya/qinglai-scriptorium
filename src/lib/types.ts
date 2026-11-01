@@ -76,3 +76,14 @@ export interface PathRename {
   from: string;
   to: string;
 }
+
+/** 全文检索命中 */
+export interface SearchHit {
+  path: string;
+  title: string;
+  dir: string;
+  /** 所有关键词出现次数之和 */
+  count: number;
+  /** 首个命中位置附近的片段，两端截断处带省略号 */
+  snippet: string;
+}

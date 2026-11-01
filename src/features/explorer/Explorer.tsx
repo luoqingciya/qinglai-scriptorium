@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { ChapterEntry } from "../../lib/types";
+import type { ChapterEntry, SearchHit } from "../../lib/types";
 import { useWorkspace } from "../../store/workspace";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -9,6 +10,53 @@ const STATUS_LABEL: Record<string, string> = {
   revising: "修订",
   done: "完稿",
 };
+
+const SEARCH_DEBOUNCE_MS = 200;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 把摘要里的关键词包成 <mark>。先 split 出交替片段，再按小写比对判定。 */
+function highlight(text: string, query: string): ReactNode {
+  const terms = query
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (terms.length === 0) return text;
+
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
+  const lowered = new Set(terms.map((t) => t.toLowerCase()));
+
+  return text.split(pattern).map((part, index) =>
+    lowered.has(part.toLowerCase()) ? <mark key={index}>{part}</mark> : part,
+  );
+}
+
+function SearchResults({ hits, query }: { hits: SearchHit[]; query: string }) {
+  const openDoc = useWorkspace((s) => s.openDoc);
+
+  return (
+    <div className="search-results">
+      {hits.map((hit) => (
+        <button
+          key={hit.path}
+          type="button"
+          className="search-hit"
+          title={hit.path}
+          onClick={() => void openDoc(hit.path)}
+        >
+          <div className="search-hit-head">
+            <span className="search-hit-title">{hit.title}</span>
+            <span className="search-hit-count">{hit.count}</span>
+          </div>
+          {hit.dir && <div className="search-hit-dir">{hit.dir}</div>}
+          <div className="search-hit-snippet">{highlight(hit.snippet, query)}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function Explorer() {
   const snapshot = useWorkspace((s) => s.snapshot);
@@ -19,6 +67,10 @@ export function Explorer() {
   const renameDoc = useWorkspace((s) => s.renameDoc);
   const deleteDoc = useWorkspace((s) => s.deleteDoc);
   const moveDoc = useWorkspace((s) => s.moveDoc);
+  const runSearch = useWorkspace((s) => s.runSearch);
+  const clearSearch = useWorkspace((s) => s.clearSearch);
+  const searchResults = useWorkspace((s) => s.searchResults);
+  const searching = useWorkspace((s) => s.searching);
 
   /** 正在新建时，记录目标目录（相对路径，空串代表根目录） */
   const [newDir, setNewDir] = useState<string | null>(null);
@@ -27,6 +79,27 @@ export function Explorer() {
   const [renaming, setRenaming] = useState<{ path: string; title: string } | null>(null);
   /** 已点过一次删除、等待确认的章节 */
   const [confirming, setConfirming] = useState<string | null>(null);
+  /** 检索输入框的即时值，与防抖后的请求分开 */
+  const [query, setQuery] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isSearching = query.trim().length > 0;
+
+  function onQueryChange(value: string) {
+    setQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      searchTimer.current = null;
+      void runSearch(value);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function resetSearch() {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = null;
+    setQuery("");
+    clearSearch();
+  }
 
   const groups = useMemo(() => {
     if (!snapshot) return [];
@@ -99,6 +172,43 @@ export function Explorer() {
 
       {snapshot && (
         <nav className="explorer-body">
+          <div className="search-box">
+            <input
+              className="search-input"
+              value={query}
+              placeholder="搜索全库，空格分隔多个关键词"
+              onChange={(e) => onQueryChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") resetSearch();
+              }}
+            />
+            {isSearching && (
+              <button
+                type="button"
+                className="search-clear"
+                title="清空检索（Esc）"
+                onClick={resetSearch}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {isSearching ? (
+            searching && searchResults.length === 0 ? (
+              <div className="explorer-empty">
+                <p>搜索中…</p>
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="explorer-empty">
+                <p>没有匹配的章节。</p>
+                <p className="hint">多个关键词之间是「且」的关系。</p>
+              </div>
+            ) : (
+              <SearchResults hits={searchResults} query={query} />
+            )
+          ) : (
+            <>
           {newDir !== null && (
             <div className="inline-create">
               <input
@@ -229,6 +339,8 @@ export function Explorer() {
               <p>这个目录下还没有 Markdown 稿件。</p>
               <p className="hint">点右上角「新建」写下第一章。</p>
             </div>
+          )}
+            </>
           )}
         </nav>
       )}

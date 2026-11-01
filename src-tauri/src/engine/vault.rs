@@ -100,8 +100,25 @@ pub fn load_config(root: &Path) -> VaultConfig {
         .unwrap_or_default()
 }
 
+/// 扫描结果：章节清单 + 建索引所需的正文。
+pub struct ScanOutcome {
+    pub snapshot: VaultSnapshot,
+    pub docs: Vec<super::search::DocInput>,
+}
+
 /// 扫描整个稿库，返回按 `order` 排序的章节清单。
+///
+/// 应用启动路径走 `scan_with_docs`（要顺带建索引），这个包装供测试与
+/// 只关心章节清单的场景使用。
+#[allow(dead_code)]
 pub fn scan(root: &Path) -> Result<VaultSnapshot, String> {
+    scan_with_docs(root).map(|outcome| outcome.snapshot)
+}
+
+/// 扫描稿库，顺带产出建搜索索引用的正文。
+///
+/// 与 `scan` 共用同一次磁盘遍历，避免为了建索引再读一遍所有文件。
+pub fn scan_with_docs(root: &Path) -> Result<ScanOutcome, String> {
     let started = std::time::Instant::now();
     if !root.is_dir() {
         return Err(format!("不是有效目录: {}", root.display()));
@@ -109,6 +126,7 @@ pub fn scan(root: &Path) -> Result<VaultSnapshot, String> {
 
     let config = load_config(root);
     let mut chapters = Vec::new();
+    let mut docs = Vec::new();
 
     let walker = WalkDir::new(root)
         .follow_links(false)
@@ -154,19 +172,27 @@ pub fn scan(root: &Path) -> Result<VaultSnapshot, String> {
             .unwrap_or_default();
         let title = front.title.clone().unwrap_or_else(|| strip_order_prefix(&stem));
 
+        let rel = to_rel(root, path);
         let dir = path
             .parent()
             .map(|p| to_rel(root, p))
             .unwrap_or_default();
 
         chapters.push(ChapterEntry {
-            path: to_rel(root, path),
-            dir,
-            title,
+            path: rel.clone(),
+            dir: dir.clone(),
+            title: title.clone(),
             order: front.order.unwrap_or(i64::MAX),
             status: front.status,
             words: words.total,
             id: front.id,
+        });
+
+        docs.push(super::search::DocInput {
+            path: rel,
+            title,
+            dir,
+            body: split.body.to_string(),
         });
     }
 
@@ -179,18 +205,21 @@ pub fn scan(root: &Path) -> Result<VaultSnapshot, String> {
             .unwrap_or_else(|| "清籁斋".to_string())
     });
 
-    Ok(VaultSnapshot {
-        root: root.to_string_lossy().to_string(),
-        title,
-        count_punctuation: config.count_punctuation,
-        chapters,
-        total_words,
-        scanned_ms: started.elapsed().as_millis(),
+    Ok(ScanOutcome {
+        snapshot: VaultSnapshot {
+            root: root.to_string_lossy().to_string(),
+            title,
+            count_punctuation: config.count_punctuation,
+            chapters,
+            total_words,
+            scanned_ms: started.elapsed().as_millis(),
+        },
+        docs,
     })
 }
 
 /// 从文件名去掉排序前缀：`001-楔子` → `楔子`。
-fn strip_order_prefix(stem: &str) -> String {
+pub(crate) fn strip_order_prefix(stem: &str) -> String {
     let without_digits = stem.trim_start_matches(|c: char| c.is_ascii_digit());
     let rest = without_digits.trim_start_matches(['-', '_', '.', ' ']);
     if rest.is_empty() || rest.len() == stem.len() {
@@ -1010,5 +1039,54 @@ mod tests {
         造三章(root);
         assert!(reorder_document(root, "../外面.md", Direction::Up).is_err());
         assert!(reorder_document(root, "卷一/不存在.md", Direction::Up).is_err());
+    }
+
+    // -------------------------------------------------------------- 检索
+
+    #[test]
+    fn 扫描建索引后能搜到正文() {
+        use crate::engine::search::SearchIndex;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "卷一/001-楔子.md", "---\ntitle: 楔子\n---\n檐角的铁马响了一声。\n");
+        write(root, "卷一/002-夜航.md", "---\ntitle: 夜航\n---\n船过第三道湾。\n");
+
+        let outcome = scan_with_docs(root).unwrap();
+        assert_eq!(outcome.docs.len(), 2);
+        let index = SearchIndex::from_docs(outcome.docs);
+
+        let hits = index.search("铁马", 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "楔子");
+        assert_eq!(hits[0].dir, "卷一");
+        assert_eq!(hits[0].path, "卷一/001-楔子.md");
+        assert!(hits[0].snippet.contains("铁马"));
+    }
+
+    #[test]
+    fn front_matter_不进索引() {
+        use crate::engine::search::SearchIndex;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "001-楔子.md", "---\ntitle: 楔子\n---\n正文里没有那个词。\n");
+
+        let index = SearchIndex::from_docs(scan_with_docs(root).unwrap().docs);
+        // 「楔子」只出现在元数据里，不该被搜到
+        assert!(index.search("楔子", 10).is_empty());
+        assert_eq!(index.search("正文", 10).len(), 1);
+    }
+
+    #[test]
+    fn 扫描产出的标题与章节清单一致() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "卷一/003-夜航.md", "---\ntitle: 夜航\norder: 3\n---\n正文\n");
+
+        let outcome = scan_with_docs(root).unwrap();
+        assert_eq!(outcome.docs.len(), outcome.snapshot.chapters.len());
+        assert_eq!(outcome.docs[0].title, outcome.snapshot.chapters[0].title);
+        assert_eq!(outcome.docs[0].dir, outcome.snapshot.chapters[0].dir);
     }
 }

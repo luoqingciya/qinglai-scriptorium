@@ -1,9 +1,10 @@
 //! 稿库相关的 command。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::State;
 
+use crate::engine::search::SearchIndex;
 use crate::engine::vault as engine_vault;
 use crate::AppState;
 
@@ -11,6 +12,22 @@ use crate::AppState;
 pub fn require_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
     let guard = state.root.lock().map_err(|_| "状态锁已中毒".to_string())?;
     guard.clone().ok_or_else(|| "尚未打开稿库".to_string())
+}
+
+/// 扫描稿库并重建内存索引。两者共用同一次磁盘遍历，避免为建索引再读一遍。
+fn scan_and_index(
+    root: &Path,
+    state: &State<'_, AppState>,
+) -> Result<engine_vault::VaultSnapshot, String> {
+    let outcome = engine_vault::scan_with_docs(root)?;
+
+    let mut index = state
+        .index
+        .lock()
+        .map_err(|_| "状态锁已中毒".to_string())?;
+    *index = SearchIndex::from_docs(outcome.docs);
+
+    Ok(outcome.snapshot)
 }
 
 /// 打开稿库：记录根目录并立即扫描一次。
@@ -33,14 +50,14 @@ pub fn open_vault(
         *guard = Some(root.clone());
     }
 
-    engine_vault::scan(&root)
+    scan_and_index(&root, &state)
 }
 
 /// 重新扫描当前稿库。
 #[tauri::command]
 pub fn scan_vault(state: State<'_, AppState>) -> Result<engine_vault::VaultSnapshot, String> {
     let root = require_root(&state)?;
-    engine_vault::scan(&root)
+    scan_and_index(&root, &state)
 }
 
 /// 在指定目录下新建一章，返回新文件的相对路径。

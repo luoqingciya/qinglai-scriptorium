@@ -11,6 +11,7 @@ import type {
   FileStamp,
   PathRename,
   SaveOutcome,
+  SearchHit,
   VaultSnapshot,
   WordCount,
 } from "./types";
@@ -41,6 +42,11 @@ export function deleteDoc(path: string): Promise<string> {
 /** 同目录内上移或下移一章，返回发生的路径变化 */
 export function reorderDoc(path: string, direction: Direction): Promise<PathRename[]> {
   return invoke<PathRename[]>("reorder_doc", { path, direction });
+}
+
+/** 检索当前稿库。多个关键词按 AND 处理。 */
+export function searchVault(query: string, limit = 50): Promise<SearchHit[]> {
+  return invoke<SearchHit[]>("search_vault", { query, limit });
 }
 
 export function readDoc(path: string): Promise<DocPayload> {
