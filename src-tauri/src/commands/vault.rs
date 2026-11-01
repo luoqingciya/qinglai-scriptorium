@@ -71,3 +71,14 @@ pub fn delete_doc(path: String, state: State<'_, AppState>) -> Result<String, St
     let root = require_root(&state)?;
     engine_vault::delete_document(&root, &path)
 }
+
+/// 同目录内上移或下移一章，返回发生的路径变化（前端据此修正当前打开的文件）。
+#[tauri::command]
+pub fn reorder_doc(
+    path: String,
+    direction: engine_vault::Direction,
+    state: State<'_, AppState>,
+) -> Result<Vec<engine_vault::PathRename>, String> {
+    let root = require_root(&state)?;
+    engine_vault::reorder_document(&root, &path, direction)
+}

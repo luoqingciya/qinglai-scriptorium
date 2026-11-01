@@ -28,6 +28,7 @@ pub fn run() {
             commands::vault::create_doc,
             commands::vault::rename_doc,
             commands::vault::delete_doc,
+            commands::vault::reorder_doc,
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::stats::count_words,
