@@ -1,0 +1,41 @@
+{
+  "name": "qinglai-scriptorium",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "清籁斋 · 面向长篇小说与笔记的个人写作工作台",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@milkdown/core": "7.23.0",
+    "@milkdown/ctx": "7.23.0",
+    "@milkdown/plugin-history": "7.23.0",
+    "@milkdown/plugin-listener": "7.23.0",
+    "@milkdown/preset-commonmark": "7.23.0",
+    "@milkdown/utils": "7.23.0",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^25.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "typescript": "^5.6.0",
+    "unified": "^11.0.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}
