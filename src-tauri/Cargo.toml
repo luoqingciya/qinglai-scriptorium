@@ -27,9 +27,6 @@ thiserror = "1"
 [dev-dependencies]
 tempfile = "3"
 
-[profile.dev]
-# 开发期依赖不优化会让 tauri 相关 crate 编译极慢
-incremental = true
-
-[profile.dev.package."*"]
-opt-level = 2
+# 不设 profile.dev.package."*".opt-level。
+# 本应用的 Rust 侧只做文件读写、Markdown 拆分与字数统计，计算量极小，
+# 优化依赖换不来可感知的运行时收益，却让冷编译（尤其 CI）慢三倍以上。
