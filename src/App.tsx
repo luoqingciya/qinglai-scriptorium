@@ -5,11 +5,26 @@ import { Explorer } from "./features/explorer/Explorer";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { useWorkspace } from "./store/workspace";
 
+function formatTime(at: number): string {
+  return new Date(at).toLocaleString("zh-CN", { hour12: false });
+}
+
 export default function App() {
   const doc = useWorkspace((s) => s.doc);
+  const docEpoch = useWorkspace((s) => s.docEpoch);
+  const snapshot = useWorkspace((s) => s.snapshot);
   const error = useWorkspace((s) => s.error);
   const dismissError = useWorkspace((s) => s.dismissError);
   const flush = useWorkspace((s) => s.flush);
+  const restoreLastVault = useWorkspace((s) => s.restoreLastVault);
+  const recovery = useWorkspace((s) => s.pendingRecovery);
+  const applyRecovery = useWorkspace((s) => s.applyRecovery);
+  const discardRecovery = useWorkspace((s) => s.discardRecovery);
+
+  // 启动时恢复上次打开的稿库，并检查有无崩溃残留
+  useEffect(() => {
+    void restoreLastVault();
+  }, [restoreLastVault]);
 
   // 关窗或切到后台前把待保存内容落盘
   useEffect(() => {
@@ -22,11 +37,29 @@ export default function App() {
     };
   }, [flush]);
 
+  const recoveryTitle = recovery
+    ? (snapshot?.chapters.find((c) => c.path === recovery.path)?.title ?? recovery.path)
+    : "";
+
   return (
     <div className="app">
       <Explorer />
 
       <main className="workspace">
+        {recovery && (
+          <div className="banner banner-recover" role="alert">
+            <span>
+              上次退出时「{recoveryTitle}」有未保存的改动（{formatTime(recovery.at)}），是否恢复？
+            </span>
+            <button type="button" className="ghost-button" onClick={() => void applyRecovery()}>
+              恢复
+            </button>
+            <button type="button" className="ghost-button" onClick={discardRecovery}>
+              丢弃
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="banner banner-error" role="alert">
             <span>{error}</span>
@@ -37,7 +70,7 @@ export default function App() {
         )}
 
         {doc ? (
-          <EditorPane key={doc.path} doc={doc} />
+          <EditorPane key={`${doc.path}#${docEpoch}`} />
         ) : (
           <div className="empty-state">
             <h1>清籁斋</h1>

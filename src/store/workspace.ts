@@ -1,10 +1,27 @@
 import { create } from "zustand";
 
 import * as ipc from "../lib/ipc";
+import {
+  clearJournal,
+  clearLastVault,
+  readJournal,
+  readLastVault,
+  writeJournal,
+  writeLastVault,
+  type JournalEntry,
+} from "../lib/journal";
 import type { Direction, DocPayload, VaultSnapshot, WordCount } from "../lib/types";
 
 /** 自动保存防抖间隔。800ms 是「几乎感觉不到延迟」与「不会每敲一个字都写盘」的折中。 */
 export const AUTOSAVE_DEBOUNCE_MS = 800;
+
+/**
+ * 恢复日志的写入间隔，比自动保存短得多。
+ *
+ * 日志写 localStorage，代价远低于落盘，所以可以用更密的节奏，
+ * 把「强杀进程」的丢失窗口从 800ms 压到 150ms 量级。
+ */
+export const JOURNAL_DEBOUNCE_MS = 150;
 
 export type SaveState = "idle" | "dirty" | "saving" | "saved" | "conflict" | "error";
 
@@ -18,6 +35,12 @@ interface WorkspaceState {
   body: string;
   /** 最后一次确认已落盘的正文，用于跳过无谓写入 */
   lastSaved: string;
+  /** 编辑器挂载时使用的初始内容 */
+  editorContent: string;
+  /** 每次需要强制重建编辑器时递增，参与 EditorPane 的 key */
+  docEpoch: number;
+  /** 启动时发现的未落盘日志，等待用户决定 */
+  pendingRecovery: JournalEntry | null;
   words: WordCount;
   saveState: SaveState;
   error: string | null;
@@ -32,17 +55,30 @@ interface WorkspaceState {
   setBody: (markdown: string) => void;
   adoptBaseline: (markdown: string) => void;
   flush: () => Promise<void>;
+  restoreLastVault: () => Promise<void>;
+  checkJournal: () => Promise<void>;
+  applyRecovery: () => Promise<void>;
+  discardRecovery: () => void;
   dismissError: () => void;
 }
 
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let journalTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleSave() {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    debounceTimer = null;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
     void useWorkspace.getState().flush();
   }, AUTOSAVE_DEBOUNCE_MS);
+}
+
+function scheduleJournal(path: string, body: string) {
+  if (journalTimer) clearTimeout(journalTimer);
+  journalTimer = setTimeout(() => {
+    journalTimer = null;
+    writeJournal({ path, body, at: Date.now() });
+  }, JOURNAL_DEBOUNCE_MS);
 }
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => {
@@ -55,6 +91,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         doc,
         body: doc.body,
         lastSaved: doc.body,
+        editorContent: doc.body,
+        docEpoch: get().docEpoch + 1,
         words: doc.words,
         saveState: "idle",
         error: null,
@@ -70,6 +108,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       doc: null,
       body: "",
       lastSaved: "",
+      editorContent: "",
+      docEpoch: get().docEpoch + 1,
       words: EMPTY_WORDS,
       saveState: "idle",
     });
@@ -80,18 +120,30 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     doc: null,
     body: "",
     lastSaved: "",
+    editorContent: "",
+    docEpoch: 0,
+    pendingRecovery: null,
     words: EMPTY_WORDS,
     saveState: "idle",
     error: null,
 
     openVault: async (path) => {
       try {
+        // 换库时丢弃上一个库的残留日志：日志里的路径是相对路径，
+        // 跨库沿用可能把 A 库的内容写进 B 库的同名章节。
+        const previous = readLastVault();
+        if (previous && previous !== path) clearJournal();
+
         const snapshot = await ipc.openVault(path);
+        writeLastVault(path);
         clearActive();
         set({ snapshot, error: null });
         const first = snapshot.chapters[0];
         if (first) await get().openDoc(first.path);
+        await get().checkJournal();
       } catch (err) {
+        // 上次记住的目录可能已被移动或删除，别让它一直报错
+        clearLastVault();
         set({ error: String(err), saveState: "error" });
       }
     },
@@ -169,6 +221,9 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     setBody: (markdown) => {
       if (get().body === markdown) return;
       set({ body: markdown, saveState: "dirty" });
+
+      const path = get().doc?.path;
+      if (path) scheduleJournal(path, markdown);
       scheduleSave();
     },
 
@@ -191,6 +246,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       if (!doc) return;
       if (body === lastSaved) {
         if (get().saveState === "dirty") set({ saveState: "saved" });
+        clearJournal();
         return;
       }
 
@@ -198,6 +254,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       try {
         const outcome = await ipc.saveDoc(doc.path, body, doc.stamp);
         if (outcome.kind === "conflict") {
+          // 保留日志：用户重新打开该章后仍有机会找回这次改动
           set({
             saveState: "conflict",
             error: "磁盘上的文件已被外部修改，本次改动未写入。请重新打开该章。",
@@ -205,6 +262,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
           return;
         }
 
+        clearJournal();
         set({
           saveState: "saved",
           lastSaved: body,
@@ -221,6 +279,100 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       } catch (err) {
         set({ saveState: "error", error: String(err) });
       }
+    },
+
+    /** 启动时恢复上次打开的稿库（openVault 内部会顺带检查崩溃残留） */
+    restoreLastVault: async () => {
+      const path = readLastVault();
+      if (!path) return;
+      await get().openVault(path);
+    },
+
+    /**
+     * 检查是否有崩溃残留。只有「日志内容与磁盘不同」才提示，
+     * 否则说明那次改动其实已经落盘，静默清掉即可。
+     */
+    checkJournal: async () => {
+      const journal = readJournal();
+      if (!journal) return;
+
+      const snapshot = get().snapshot;
+      if (!snapshot) return;
+
+      // 章节可能已被删除或改名，此时日志已无意义
+      if (!snapshot.chapters.some((c) => c.path === journal.path)) {
+        clearJournal();
+        return;
+      }
+
+      try {
+        const disk = await ipc.readDoc(journal.path);
+        if (disk.body === journal.body) {
+          clearJournal();
+          return;
+        }
+        set({ pendingRecovery: journal });
+      } catch {
+        clearJournal();
+      }
+    },
+
+    /**
+     * 恢复日志内容：直接落盘，再让编辑器以新内容重建。
+     *
+     * 不走「标记脏 → 等自动保存」那条路，是因为重建编辑器会触发
+     * adoptBaseline，那条路径上很容易把待保存状态抹掉。
+     */
+    applyRecovery: async () => {
+      const journal = get().pendingRecovery;
+      if (!journal) return;
+      set({ pendingRecovery: null });
+
+      if (get().activePath !== journal.path) {
+        await get().openDoc(journal.path);
+      }
+
+      const doc = get().doc;
+      if (!doc || doc.path !== journal.path) {
+        clearJournal();
+        set({ error: "恢复失败：找不到对应章节，可能已被移动或删除。" });
+        return;
+      }
+
+      set({ saveState: "saving" });
+      try {
+        const outcome = await ipc.saveDoc(doc.path, journal.body, doc.stamp);
+        if (outcome.kind === "conflict") {
+          set({
+            saveState: "conflict",
+            error: "恢复失败：磁盘上的文件已被外部修改，请重新打开该章后再试。",
+          });
+          return;
+        }
+
+        clearJournal();
+        set({
+          body: journal.body,
+          lastSaved: journal.body,
+          editorContent: journal.body,
+          docEpoch: get().docEpoch + 1,
+          doc: {
+            ...doc,
+            body: journal.body,
+            stamp: outcome.stamp,
+            ...(outcome.kind === "saved" ? { words: outcome.words } : {}),
+          },
+          ...(outcome.kind === "saved" ? { words: outcome.words } : {}),
+          saveState: "saved",
+        });
+      } catch (err) {
+        set({ saveState: "error", error: String(err) });
+      }
+    },
+
+    discardRecovery: () => {
+      clearJournal();
+      set({ pendingRecovery: null });
     },
 
     dismissError: () => set({ error: null }),

@@ -418,6 +418,12 @@ button {
   color: var(--err);
 }
 
+.banner-recover {
+  background: rgba(224, 169, 74, 0.1);
+  color: var(--warn);
+  border-bottom-color: rgba(224, 169, 74, 0.25);
+}
+
 .banner span {
   flex: 1;
 }
