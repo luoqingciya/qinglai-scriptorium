@@ -16,6 +16,8 @@ import type {
   PathRename,
   SaveOutcome,
   SearchHit,
+  TodayStat,
+  TrendPoint,
   VaultSnapshot,
   WordCount,
 } from "./types";
@@ -100,4 +102,14 @@ export function exportDocx(
   options?: ExportOptions,
 ): Promise<ExportStats> {
   return invoke<ExportStats>("export_docx", { paths, dest, options });
+}
+
+/** 记录一次当前全库总字数，返回今日累计 */
+export function recordStats(totalWords: number): Promise<TodayStat> {
+  return invoke<TodayStat>("record_stats", { totalWords });
+}
+
+/** 最近若干天的写作趋势，按日期正序 */
+export function statsHistory(limit = 30): Promise<TrendPoint[]> {
+  return invoke<TrendPoint[]>("stats_history", { limit });
 }

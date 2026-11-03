@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { BacklinkPanel } from "./features/backlinks/BacklinkPanel";
 import { EditorPane } from "./features/editor/EditorPane";
 import { Explorer } from "./features/explorer/Explorer";
+import { StatsPanel } from "./features/stats/StatsPanel";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { useWorkspace } from "./store/workspace";
 
@@ -25,6 +26,7 @@ export default function App() {
   const discardRecovery = useWorkspace((s) => s.discardRecovery);
   const focusMode = useWorkspace((s) => s.focusMode);
   const backlinksOpen = useWorkspace((s) => s.backlinksOpen);
+  const statsOpen = useWorkspace((s) => s.statsOpen);
 
   // 启动时恢复上次打开的稿库，并检查有无崩溃残留
   useEffect(() => {
@@ -108,6 +110,8 @@ export default function App() {
       </main>
 
       {backlinksOpen && doc && <BacklinkPanel />}
+
+      {statsOpen && <StatsPanel />}
 
       <StatusBar />
     </div>
