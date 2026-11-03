@@ -131,3 +131,34 @@ pub fn reorder_doc(
     let root = require_root(&state)?;
     engine_vault::reorder_document(&root, &path, direction)
 }
+
+/// 改写一章的情节摘要。
+///
+/// 只替换 front matter 里的 `summary` 一行，正文与其他元数据字节不动
+/// （走 `md::set_scalar`，与改标题同一套机制）。
+///
+/// 空串表示「清空摘要」：字段会留下 `summary: ""`，扫描时归一成 `None`，
+/// UI 显示为「未写摘要」。不删行是有意的——删行需要另一套逻辑，
+/// 而空值在语义上已经足够。
+#[tauri::command]
+pub fn update_summary(
+    path: String,
+    summary: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let root = require_root(&state)?;
+    let abs = crate::engine::vault::safe_join(&root, &path)
+        .ok_or_else(|| format!("非法路径：{path}"))?;
+
+    let original = std::fs::read_to_string(&abs).map_err(|e| format!("读取失败：{e}"))?;
+    let next = crate::engine::md::set_scalar(&original, "summary", summary.trim());
+
+    if next == original {
+        return Ok(());
+    }
+
+    crate::engine::atomic::write_atomic(&abs, next.as_bytes())
+        .map_err(|e| format!("写入失败：{e}"))?;
+
+    Ok(())
+}

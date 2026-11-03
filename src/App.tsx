@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { BacklinkPanel } from "./features/backlinks/BacklinkPanel";
 import { EditorPane } from "./features/editor/EditorPane";
 import { Explorer } from "./features/explorer/Explorer";
+import { OutlineView } from "./features/outline/OutlineView";
 import { StatsPanel } from "./features/stats/StatsPanel";
 import { StatusBar } from "./features/statusbar/StatusBar";
 import { useWorkspace } from "./store/workspace";
@@ -27,6 +28,7 @@ export default function App() {
   const focusMode = useWorkspace((s) => s.focusMode);
   const backlinksOpen = useWorkspace((s) => s.backlinksOpen);
   const statsOpen = useWorkspace((s) => s.statsOpen);
+  const outlineOpen = useWorkspace((s) => s.outlineOpen);
 
   // 启动时恢复上次打开的稿库，并检查有无崩溃残留
   useEffect(() => {
@@ -99,7 +101,9 @@ export default function App() {
           </div>
         )}
 
-        {doc ? (
+        {outlineOpen ? (
+          <OutlineView />
+        ) : doc ? (
           <EditorPane key={`${doc.path}#${docEpoch}`} />
         ) : (
           <div className="empty-state">

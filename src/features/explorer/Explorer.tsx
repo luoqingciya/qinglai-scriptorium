@@ -2,15 +2,10 @@ import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
+import { STATUS_LABEL } from "../../lib/labels";
 import type { ChapterEntry, SearchHit } from "../../lib/types";
 import { useWorkspace } from "../../store/workspace";
 import { CharacterList } from "../characters/CharacterList";
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "草稿",
-  revising: "修订",
-  done: "完稿",
-};
 
 const SEARCH_DEBOUNCE_MS = 200;
 

@@ -43,6 +43,8 @@ export interface ChapterEntry {
   status: DocStatus | null;
   words: number;
   id: string | null;
+  /** 一句话情节摘要，未写时为 null */
+  summary: string | null;
 }
 
 export interface VaultSnapshot {
