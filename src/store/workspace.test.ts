@@ -16,6 +16,11 @@ vi.mock("../lib/ipc", () => ({
   deleteDoc: vi.fn(),
   reorderDoc: vi.fn(),
   countWords: vi.fn(),
+  searchVault: vi.fn(),
+  backlinks: vi.fn(),
+  outlinks: vi.fn(),
+  danglingLinks: vi.fn(),
+  resolveLink: vi.fn(),
 }));
 
 import * as ipc from "../lib/ipc";
@@ -285,5 +290,83 @@ describe("专注模式", () => {
     useWorkspace.getState().toggleFocus();
     expect(useWorkspace.getState().focusMode).toBe(false);
     expect(localStorage.getItem("qinglai.focus.v1")).toBe("0");
+  });
+});
+
+describe("双链与反链", () => {
+  it("打开文档时自动拉取反链", async () => {
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "正文"));
+    mocked.backlinks.mockResolvedValue([
+      { path: "b.md", title: "乙", dir: "", count: 2, contexts: ["…[[甲]]…"] },
+    ]);
+
+    await useWorkspace.getState().openDoc("a.md");
+    // loadBacklinks 是 fire-and-forget，等一轮微任务
+    await Promise.resolve();
+
+    expect(mocked.backlinks).toHaveBeenCalledWith("a.md");
+    expect(useWorkspace.getState().backlinks).toHaveLength(1);
+  });
+
+  it("切章后旧的反链请求结果被丢弃", async () => {
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "正文"));
+    // 模拟慢请求：a.md 的反链在切到 b.md 之后才返回
+    let resolveA: (v: unknown) => void = () => {};
+    mocked.backlinks.mockImplementationOnce(
+      () => new Promise((r) => (resolveA = r as (v: unknown) => void)),
+    );
+    mocked.backlinks.mockResolvedValueOnce([]);
+
+    await useWorkspace.getState().openDoc("a.md");
+
+    mocked.readDoc.mockResolvedValue(makeDoc("b.md", "另一章"));
+    await useWorkspace.getState().openDoc("b.md");
+
+    // 此时 a.md 的请求才回来
+    resolveA([{ path: "c.md", title: "丙", dir: "", count: 1, contexts: ["x"] }]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 当前是 b.md，a.md 的迟到结果不能覆盖
+    expect(useWorkspace.getState().activePath).toBe("b.md");
+    expect(useWorkspace.getState().backlinks).toEqual([]);
+  });
+
+  it("反链查询失败时留空，不打断写作", async () => {
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "正文"));
+    mocked.backlinks.mockRejectedValue("索引未就绪");
+
+    await useWorkspace.getState().openDoc("a.md");
+    await Promise.resolve();
+
+    expect(useWorkspace.getState().backlinks).toEqual([]);
+    expect(useWorkspace.getState().error).toBeNull();
+  });
+
+  it("按标题跳转：解析成功则打开目标章", async () => {
+    mocked.resolveLink.mockResolvedValue("b.md");
+    mocked.readDoc.mockResolvedValue(makeDoc("b.md", "乙的正文"));
+
+    await useWorkspace.getState().openByTitle("乙");
+
+    expect(mocked.resolveLink).toHaveBeenCalledWith("乙");
+    expect(useWorkspace.getState().activePath).toBe("b.md");
+  });
+
+  it("按标题跳转：目标不存在时给出明确提示", async () => {
+    mocked.resolveLink.mockResolvedValue(null);
+
+    await useWorkspace.getState().openByTitle("不存在的章");
+
+    expect(useWorkspace.getState().error).toContain("找不到章节");
+    expect(mocked.readDoc).not.toHaveBeenCalled();
+  });
+
+  it("toggleBacklinks 切换面板展开状态", () => {
+    expect(useWorkspace.getState().backlinksOpen).toBe(false);
+    useWorkspace.getState().toggleBacklinks();
+    expect(useWorkspace.getState().backlinksOpen).toBe(true);
+    useWorkspace.getState().toggleBacklinks();
+    expect(useWorkspace.getState().backlinksOpen).toBe(false);
   });
 });

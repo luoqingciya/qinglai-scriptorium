@@ -17,6 +17,8 @@ pub struct AppState {
     pub(crate) root: Mutex<Option<PathBuf>>,
     /// 全文检索索引。纯内存、可随时重建，与「文件即真相」的前提一致。
     pub(crate) index: Mutex<engine::search::SearchIndex>,
+    /// `[[双链]]` 的引用索引。同样纯内存、随扫描重建。
+    pub(crate) links: Mutex<engine::links::LinkIndex>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,6 +34,10 @@ pub fn run() {
             commands::vault::delete_doc,
             commands::vault::reorder_doc,
             commands::search::search_vault,
+            commands::links::backlinks,
+            commands::links::outlinks,
+            commands::links::dangling_links,
+            commands::links::resolve_link,
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::stats::count_words,

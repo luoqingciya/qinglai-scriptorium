@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { BacklinkPanel } from "./features/backlinks/BacklinkPanel";
 import { EditorPane } from "./features/editor/EditorPane";
 import { Explorer } from "./features/explorer/Explorer";
 import { StatusBar } from "./features/statusbar/StatusBar";
@@ -21,6 +22,7 @@ export default function App() {
   const applyRecovery = useWorkspace((s) => s.applyRecovery);
   const discardRecovery = useWorkspace((s) => s.discardRecovery);
   const focusMode = useWorkspace((s) => s.focusMode);
+  const backlinksOpen = useWorkspace((s) => s.backlinksOpen);
 
   // 启动时恢复上次打开的稿库，并检查有无崩溃残留
   useEffect(() => {
@@ -55,7 +57,9 @@ export default function App() {
     : "";
 
   return (
-    <div className={`app${focusMode ? " is-focus" : ""}`}>
+    <div
+      className={`app${focusMode ? " is-focus" : ""}${backlinksOpen && doc ? " has-backlinks" : ""}`}
+    >
       {!focusMode && <Explorer />}
 
       <main className="workspace">
@@ -91,6 +95,8 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {backlinksOpen && doc && <BacklinkPanel />}
 
       <StatusBar />
     </div>

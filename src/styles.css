@@ -101,9 +101,18 @@ button {
   height: 100%;
 }
 
+/* 反链面板展开时多一列 */
+.app.has-backlinks {
+  grid-template-columns: 280px 1fr 260px;
+}
+
 /* 专注模式：隐藏目录树，编辑区铺满全宽 */
 .app.is-focus {
   grid-template-columns: 1fr;
+}
+
+.app.is-focus.has-backlinks {
+  grid-template-columns: 1fr 260px;
 }
 
 .workspace {
@@ -433,6 +442,21 @@ button {
   background: var(--accent-soft);
 }
 
+/* ---------------------------------------------------------- 编辑器内双链 */
+
+/* Decoration 叠出来的样式，不改变文档结构，因此不影响 Markdown 序列化 */
+.editor-host .ProseMirror .wikilink {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-soft);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.editor-host .ProseMirror .wikilink:hover {
+  background: var(--accent-soft);
+  border-bottom-color: var(--accent);
+}
+
 /* ------------------------------------------------------------ 空状态 */
 
 .empty-state {
@@ -597,8 +621,148 @@ button {
   border-radius: 2px;
 }
 
-/* -------------------------------------------------------------- 状态栏 */
+/* ------------------------------------------------------------ 反链面板 */
 
+.backlinks {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+}
+
+.app.is-focus .backlinks {
+  grid-column: 2;
+}
+
+.backlinks-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.backlinks-title {
+  flex: 1;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.backlinks-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.backlinks-close {
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  font-size: 14px;
+  color: var(--text-faint);
+  border-radius: 4px;
+}
+
+.backlinks-close:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.backlinks-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+
+.backlinks-empty {
+  padding: 16px 14px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.backlinks-empty p {
+  margin: 0 0 8px;
+}
+
+.backlinks-empty .hint {
+  color: var(--text-faint);
+}
+
+.backlinks-empty code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-hover);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.backlink-item {
+  padding: 8px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.backlink-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.backlink-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backlink-head:hover .backlink-name {
+  color: var(--accent);
+}
+
+.backlink-num {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.backlink-dir {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backlink-context {
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  font-family: var(--font-serif);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.backlink-more {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------- 状态栏 */
 .statusbar {
   grid-column: 1 / -1;
   grid-row: 2;
@@ -659,6 +823,11 @@ button {
 .status-button:hover {
   border-color: var(--accent);
   color: var(--text);
+}
+
+.status-button.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ------------------------------------------------------------ 滚动条 */

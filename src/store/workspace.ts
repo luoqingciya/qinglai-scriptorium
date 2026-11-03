@@ -10,7 +10,14 @@ import {
   writeLastVault,
   type JournalEntry,
 } from "../lib/journal";
-import type { Direction, DocPayload, SearchHit, VaultSnapshot, WordCount } from "../lib/types";
+import type {
+  BacklinkHit,
+  Direction,
+  DocPayload,
+  SearchHit,
+  VaultSnapshot,
+  WordCount,
+} from "../lib/types";
 
 /** 自动保存防抖间隔。800ms 是「几乎感觉不到延迟」与「不会每敲一个字都写盘」的折中。 */
 export const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -75,6 +82,15 @@ interface WorkspaceState {
   focusMode: boolean;
   toggleFocus: () => void;
 
+  /** 当前章的反链 */
+  backlinks: BacklinkHit[];
+  /** 反链面板是否展开。默认收起，不打扰写作。 */
+  backlinksOpen: boolean;
+  toggleBacklinks: () => void;
+  loadBacklinks: (path: string) => Promise<void>;
+  /** 按标题跳转，供 `[[双链]]` 点击使用 */
+  openByTitle: (title: string) => Promise<void>;
+
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
   openDoc: (path: string) => Promise<void>;
@@ -130,6 +146,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         saveState: "idle",
         error: null,
       });
+      // 反链查询不阻塞打开：查不到也不该影响写作
+      void get().loadBacklinks(path);
     } catch (err) {
       set({ doc: null, activePath: path, error: String(err), saveState: "error" });
     }
@@ -145,6 +163,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       docEpoch: get().docEpoch + 1,
       words: EMPTY_WORDS,
       saveState: "idle",
+      backlinks: [],
     });
 
   return {
@@ -163,11 +182,46 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     searchResults: [],
     searching: false,
     focusMode: readFocus(),
+    backlinks: [],
+    backlinksOpen: false,
 
     toggleFocus: () => {
       const next = !get().focusMode;
       writeFocus(next);
       set({ focusMode: next });
+    },
+
+    toggleBacklinks: () => set({ backlinksOpen: !get().backlinksOpen }),
+
+    loadBacklinks: async (path) => {
+      try {
+        const hits = await ipc.backlinks(path);
+        // 切章后旧请求可能后到，只认当前章的结果
+        if (get().activePath !== path) return;
+        set({ backlinks: hits });
+      } catch {
+        // 反链是派生信息，查不到就留空，不打断写作
+        if (get().activePath === path) set({ backlinks: [] });
+      }
+    },
+
+    /**
+     * 按标题跳转。
+     *
+     * 标题由用户手写，可能拼错、可能指向已改名的章节 —— 解析不到时给出明确提示，
+     * 而不是静默无反应（静默会让人以为点击失效）。
+     */
+    openByTitle: async (title) => {
+      try {
+        const path = await ipc.resolveLink(title);
+        if (!path) {
+          set({ error: `找不到章节「${title}」，它可能已被改名或删除。` });
+          return;
+        }
+        await get().openDoc(path);
+      } catch (err) {
+        set({ error: String(err) });
+      }
     },
 
     openVault: async (path) => {
@@ -198,6 +252,9 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         // 章节有增删改时，检索结果里的路径可能已失效，顺手重跑一次
         const query = get().searchQuery;
         if (query.trim()) await get().runSearch(query);
+        // 增删改也会改变反链（比如删了一章，引用它的地方就悬空了）
+        const active = get().activePath;
+        if (active) void get().loadBacklinks(active);
       } catch (err) {
         set({ error: String(err), saveState: "error" });
       }
