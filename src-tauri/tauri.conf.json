@@ -29,13 +29,22 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "面向长篇小说的个人写作工作台",
+    "longDescription": "清籁斋是一个本地优先的写作工作台。稿件以 Markdown + YAML front matter 存在磁盘上，不引入私有格式，可被任何文本编辑器打开，也可用 git 做版本管理。",
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false,
+        "installMode": "currentUser"
+      }
+    }
   }
 }
