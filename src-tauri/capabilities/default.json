@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "默认能力：只开放文件选择对话框。文件读写一律走自定义 command，前端拿不到任意路径权限。",
+  "description": "默认能力：只开放文件选择与保存对话框。文件读写一律走自定义 command，前端拿不到任意路径权限。",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
 }

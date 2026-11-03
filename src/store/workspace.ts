@@ -70,6 +70,8 @@ interface WorkspaceState {
   words: WordCount;
   saveState: SaveState;
   error: string | null;
+  /** 一次性成功提示，展示后由用户或定时器清除 */
+  notice: string | null;
 
   /** 当前检索词 */
   searchQuery: string;
@@ -90,6 +92,12 @@ interface WorkspaceState {
   loadBacklinks: (path: string) => Promise<void>;
   /** 按标题跳转，供 `[[双链]]` 点击使用 */
   openByTitle: (title: string) => Promise<void>;
+
+  /** 正在导出 docx */
+  exporting: boolean;
+  /** 导出全库为 docx，`dest` 由系统保存对话框提供 */
+  exportBook: (dest: string) => Promise<void>;
+  dismissNotice: () => void;
 
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -178,6 +186,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     words: EMPTY_WORDS,
     saveState: "idle",
     error: null,
+    notice: null,
+    exporting: false,
     searchQuery: "",
     searchResults: [],
     searching: false,
@@ -223,6 +233,29 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         set({ error: String(err) });
       }
     },
+
+    /**
+     * 导出全库。
+     *
+     * 必须先 `flush()`：导出读的是磁盘，若当前章还有未落盘的改动，
+     * 导出的就是旧内容 —— 这种错误用户很难发现，因为文件看起来是「成功生成」的。
+     */
+    exportBook: async (dest) => {
+      set({ exporting: true, notice: null });
+      try {
+        await get().flush();
+        const stats = await ipc.exportDocx([], dest);
+        const kb = Math.max(1, Math.round(stats.bytes / 1024));
+        set({
+          exporting: false,
+          notice: `已导出 ${stats.chapters} 章、${stats.paragraphs} 段（约 ${kb} KB）`,
+        });
+      } catch (err) {
+        set({ exporting: false, error: String(err) });
+      }
+    },
+
+    dismissNotice: () => set({ notice: null }),
 
     openVault: async (path) => {
       try {

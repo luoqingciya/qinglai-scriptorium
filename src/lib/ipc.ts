@@ -10,6 +10,8 @@ import type {
   DanglingLink,
   Direction,
   DocPayload,
+  ExportOptions,
+  ExportStats,
   FileStamp,
   PathRename,
   SaveOutcome,
@@ -85,4 +87,17 @@ export function danglingLinks(): Promise<DanglingLink[]> {
 /** 把 `[[标题]]` 解析成章节路径，找不到返回 null */
 export function resolveLink(target: string): Promise<string | null> {
   return invoke<string | null>("resolve_link", { target });
+}
+
+/**
+ * 导出 docx。
+ *
+ * `paths` 为空表示导出全库；`dest` 是绝对路径，由系统保存对话框得到。
+ */
+export function exportDocx(
+  paths: string[],
+  dest: string,
+  options?: ExportOptions,
+): Promise<ExportStats> {
+  return invoke<ExportStats>("export_docx", { paths, dest, options });
 }

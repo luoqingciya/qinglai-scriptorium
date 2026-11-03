@@ -105,3 +105,23 @@ export interface DanglingLink {
   sourcePath: string;
   sourceTitle: string;
 }
+
+/** docx 导出参数。缺省即国内小说通行格式（宋体小四、1.5 倍行距、首行缩进 2 字符）。 */
+export interface ExportOptions {
+  /** 正文字体（同时写入 ascii / hAnsi / eastAsia 槽位） */
+  font: string;
+  /** 字号，单位半磅（12pt 小四 = 24） */
+  fontSize: number;
+  /** 行距，240 = 单倍，360 = 1.5 倍 */
+  lineSpacing: number;
+  /** 首行缩进，单位 1/100 字符（200 = 2 字符） */
+  firstLineChars: number;
+  /** 章与章之间分页 */
+  pageBreak: boolean;
+}
+
+export interface ExportStats {
+  chapters: number;
+  paragraphs: number;
+  bytes: number;
+}
