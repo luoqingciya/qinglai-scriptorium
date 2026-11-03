@@ -20,6 +20,7 @@ export default function App() {
   const recovery = useWorkspace((s) => s.pendingRecovery);
   const applyRecovery = useWorkspace((s) => s.applyRecovery);
   const discardRecovery = useWorkspace((s) => s.discardRecovery);
+  const focusMode = useWorkspace((s) => s.focusMode);
 
   // 启动时恢复上次打开的稿库，并检查有无崩溃残留
   useEffect(() => {
@@ -37,13 +38,25 @@ export default function App() {
     };
   }, [flush]);
 
+  // F11 切换专注模式
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F11") {
+        e.preventDefault();
+        useWorkspace.getState().toggleFocus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const recoveryTitle = recovery
     ? (snapshot?.chapters.find((c) => c.path === recovery.path)?.title ?? recovery.path)
     : "";
 
   return (
-    <div className="app">
-      <Explorer />
+    <div className={`app${focusMode ? " is-focus" : ""}`}>
+      {!focusMode && <Explorer />}
 
       <main className="workspace">
         {recovery && (

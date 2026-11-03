@@ -84,6 +84,7 @@ beforeEach(() => {
     words: WORDS,
     saveState: "idle",
     error: null,
+    focusMode: false,
   });
 });
 
@@ -270,5 +271,19 @@ describe("恢复执行", () => {
 
     expect(mocked.saveDoc).not.toHaveBeenCalled();
     expect(useWorkspace.getState().error).toContain("恢复失败");
+  });
+});
+
+describe("专注模式", () => {
+  it("toggleFocus 切换状态并持久化", () => {
+    expect(useWorkspace.getState().focusMode).toBe(false);
+
+    useWorkspace.getState().toggleFocus();
+    expect(useWorkspace.getState().focusMode).toBe(true);
+    expect(localStorage.getItem("qinglai.focus.v1")).toBe("1");
+
+    useWorkspace.getState().toggleFocus();
+    expect(useWorkspace.getState().focusMode).toBe(false);
+    expect(localStorage.getItem("qinglai.focus.v1")).toBe("0");
   });
 });

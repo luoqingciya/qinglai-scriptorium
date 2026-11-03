@@ -15,6 +15,25 @@ import type { Direction, DocPayload, SearchHit, VaultSnapshot, WordCount } from 
 /** 自动保存防抖间隔。800ms 是「几乎感觉不到延迟」与「不会每敲一个字都写盘」的折中。 */
 export const AUTOSAVE_DEBOUNCE_MS = 800;
 
+/** 专注模式的持久化 key */
+const FOCUS_KEY = "qinglai.focus.v1";
+
+function readFocus(): boolean {
+  try {
+    return localStorage.getItem(FOCUS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFocus(on: boolean) {
+  try {
+    localStorage.setItem(FOCUS_KEY, on ? "1" : "0");
+  } catch {
+    // 写入失败不影响使用
+  }
+}
+
 /**
  * 恢复日志的写入间隔，比自动保存短得多。
  *
@@ -51,6 +70,10 @@ interface WorkspaceState {
   searching: boolean;
   runSearch: (query: string) => Promise<void>;
   clearSearch: () => void;
+
+  /** 专注模式：隐藏目录树，编辑区铺满 */
+  focusMode: boolean;
+  toggleFocus: () => void;
 
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -139,6 +162,13 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     searchQuery: "",
     searchResults: [],
     searching: false,
+    focusMode: readFocus(),
+
+    toggleFocus: () => {
+      const next = !get().focusMode;
+      writeFocus(next);
+      set({ focusMode: next });
+    },
 
     openVault: async (path) => {
       try {
