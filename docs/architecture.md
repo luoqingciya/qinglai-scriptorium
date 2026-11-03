@@ -77,6 +77,29 @@ B 库的同名章节。
 按章做内容寻址（sha256 → blob），manifest 记录快照点，天然去重。
 git 作为可选导出而非核心依赖。
 
+### 2.5 界面验证走 CDP，不看进程存活
+
+**这一条是踩坑换来的。**
+
+Tauri 的 debug 构建加载 `devUrl`（`http://localhost:1420`），只有 release 才用
+`frontendDist`。直接 `cargo build` 后运行 `target/debug/*.exe`，WebView 会去连一个
+没启动的 Vite，得到「无法访问此页面」的错误页——**而进程照样存活**。
+
+于是「检查进程存在」这个验证手段会稳定地给出假阳性。截屏又被安全策略拦住
+（`Add-Type` 加载 .NET 被禁），一度以为 GUI 无法自动验证。
+
+真正的办法是走 WebView2 的远程调试端口：
+
+```bash
+WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" pnpm tauri dev
+node scripts/ui-check.mjs --vault <稿库路径>
+```
+
+`scripts/ui-check.mjs` 通过 CDP 读 DOM，断言：不是连接错误页、`.app` 已挂载、
+编辑器有正文、无 console 报错。带 `--vault` 时还会预置稿库并检查章节数与编辑器内容。
+
+这比截图更可靠：截图只能人眼看，CDP 能给出可断言的布尔值。
+
 ## 3. 所见即所得的保真风险
 
 Markdown 是磁盘格式，ProseMirror 是内存格式，中间有一次有损转换。中文排版恰好

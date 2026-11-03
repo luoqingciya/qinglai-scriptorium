@@ -31,16 +31,45 @@ vault/
 
 ```bash
 pnpm install
-pnpm tauri dev
+pnpm tauri dev        # 同时启动 Vite 与桌面窗口
 ```
+
+> **debug 构建必须配 dev server。** Tauri 的 debug profile 加载 `devUrl`
+> （`http://localhost:1420`），只有 release 才用 `frontendDist`。
+> 直接 `cargo build` 后运行 `target/debug/*.exe`，WebView 会去连一个没启动的
+> Vite，得到「无法访问此页面」的错误页——**而进程照样存活**，只看进程状态
+> 会误判为启动成功。要么用 `pnpm tauri dev`，要么用 `pnpm tauri build` 出 release。
 
 校验：
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm test
-pnpm build
+pnpm exec tsc --noEmit                              # 类型
+pnpm test                                           # 前端单测（vitest）
+cargo test --manifest-path src-tauri/Cargo.toml     # 后端单测
+pnpm build                                          # 前端构建
 ```
+
+加完测试文件后**必须重跑 `tsc`**：vitest 不做类型检查，只跑 vitest 会漏掉
+`noUncheckedIndexedAccess` 之类的类型错误（CI 会红）。
+
+### 界面冒烟测试
+
+单元测试覆盖不到渲染层——ProseMirror 需要真实 DOM，jsdom 跑不起来。
+要确认界面真的渲染出来，走 WebView2 的远程调试端口读 DOM：
+
+```bash
+# 终端 1
+WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" pnpm tauri dev
+
+# 终端 2：检查空状态界面
+pnpm check:ui
+
+# 带稿库跑一遍真实功能（章节树、编辑器、双链、人物）
+pnpm check:ui --vault "$(pwd)/examples/sample-vault"
+```
+
+脚本会断言：不是连接错误页、React 已挂载、编辑器有内容、无 console 报错。
+退出码非 0 即失败。
 
 ## 文档
 
