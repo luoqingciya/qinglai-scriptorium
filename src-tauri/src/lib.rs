@@ -38,6 +38,7 @@ pub fn run() {
             commands::links::outlinks,
             commands::links::dangling_links,
             commands::links::resolve_link,
+            commands::export::export_docx,
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::stats::count_words,

@@ -1,3 +1,5 @@
+import { save } from "@tauri-apps/plugin-dialog";
+
 import { useWorkspace } from "../../store/workspace";
 import type { SaveState } from "../../store/workspace";
 import { useTheme } from "../../lib/theme-store";
@@ -21,11 +23,22 @@ export function StatusBar() {
   const backlinks = useWorkspace((s) => s.backlinks);
   const backlinksOpen = useWorkspace((s) => s.backlinksOpen);
   const toggleBacklinks = useWorkspace((s) => s.toggleBacklinks);
+  const exporting = useWorkspace((s) => s.exporting);
+  const exportBook = useWorkspace((s) => s.exportBook);
 
   const themeLabel = useTheme((s) => s.label);
   const cycleTheme = useTheme((s) => s.cycle);
 
   const backlinkTotal = backlinks.reduce((sum, hit) => sum + hit.count, 0);
+
+  async function onExport() {
+    const dest = await save({
+      title: "导出全库为 Word 文档",
+      defaultPath: `${snapshot?.title ?? "未命名"}.docx`,
+      filters: [{ name: "Word 文档", extensions: ["docx"] }],
+    });
+    if (typeof dest === "string") await exportBook(dest);
+  }
 
   return (
     <footer className="statusbar">
@@ -54,6 +67,18 @@ export function StatusBar() {
             反链 {backlinkTotal}
           </button>
         </>
+      )}
+      <span className="status-sep" />
+      {snapshot && (
+        <button
+          type="button"
+          className="status-button"
+          title="导出全库为 Word 文档（宋体小四、1.5 倍行距、首行缩进 2 字符）"
+          disabled={exporting}
+          onClick={() => void onExport()}
+        >
+          {exporting ? "导出中…" : "导出 docx"}
+        </button>
       )}
       <span className="status-sep" />
       <button

@@ -16,6 +16,8 @@ export default function App() {
   const snapshot = useWorkspace((s) => s.snapshot);
   const error = useWorkspace((s) => s.error);
   const dismissError = useWorkspace((s) => s.dismissError);
+  const notice = useWorkspace((s) => s.notice);
+  const dismissNotice = useWorkspace((s) => s.dismissNotice);
   const flush = useWorkspace((s) => s.flush);
   const restoreLastVault = useWorkspace((s) => s.restoreLastVault);
   const recovery = useWorkspace((s) => s.pendingRecovery);
@@ -81,6 +83,15 @@ export default function App() {
           <div className="banner banner-error" role="alert">
             <span>{error}</span>
             <button type="button" className="ghost-button" onClick={dismissError}>
+              知道了
+            </button>
+          </div>
+        )}
+
+        {notice && (
+          <div className="banner banner-notice" role="status">
+            <span>{notice}</span>
+            <button type="button" className="ghost-button" onClick={dismissNotice}>
               知道了
             </button>
           </div>

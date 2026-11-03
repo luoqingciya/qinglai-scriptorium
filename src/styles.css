@@ -505,6 +505,12 @@ button {
   border-bottom-color: rgba(224, 169, 74, 0.25);
 }
 
+.banner-notice {
+  background: rgba(93, 201, 160, 0.1);
+  color: var(--ok);
+  border-bottom-color: rgba(93, 201, 160, 0.25);
+}
+
 .banner span {
   flex: 1;
 }

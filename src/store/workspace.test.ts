@@ -21,6 +21,7 @@ vi.mock("../lib/ipc", () => ({
   outlinks: vi.fn(),
   danglingLinks: vi.fn(),
   resolveLink: vi.fn(),
+  exportDocx: vi.fn(),
 }));
 
 import * as ipc from "../lib/ipc";
@@ -89,7 +90,11 @@ beforeEach(() => {
     words: WORDS,
     saveState: "idle",
     error: null,
+    notice: null,
+    exporting: false,
     focusMode: false,
+    backlinks: [],
+    backlinksOpen: false,
   });
 });
 
@@ -368,5 +373,54 @@ describe("双链与反链", () => {
     expect(useWorkspace.getState().backlinksOpen).toBe(true);
     useWorkspace.getState().toggleBacklinks();
     expect(useWorkspace.getState().backlinksOpen).toBe(false);
+  });
+});
+
+describe("导出 docx", () => {
+  it("导出前先把未落盘内容写下去", async () => {
+    // 这是最容易出错的地方：导出读的是磁盘，若当前章还有未落盘的改动，
+    // 导出的就是旧内容 —— 而文件看起来是「成功生成」的，用户很难发现。
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧内容"),
+      body: "旧内容",
+      lastSaved: "旧内容",
+    });
+    useWorkspace.getState().setBody("新内容");
+
+    mocked.saveDoc.mockResolvedValue({
+      kind: "saved",
+      stamp: { mtimeMs: 2, len: 9 },
+      words: WORDS,
+    });
+    mocked.exportDocx.mockResolvedValue({ chapters: 1, paragraphs: 2, bytes: 2048 });
+
+    await useWorkspace.getState().exportBook("C:/tmp/out.docx");
+
+    expect(mocked.saveDoc).toHaveBeenCalledTimes(1);
+    const saveOrder = mocked.saveDoc.mock.invocationCallOrder[0] ?? 0;
+    const exportOrder = mocked.exportDocx.mock.invocationCallOrder[0] ?? 0;
+    expect(saveOrder).toBeLessThan(exportOrder);
+  });
+
+  it("导出成功后给出提示", async () => {
+    mocked.exportDocx.mockResolvedValue({ chapters: 12, paragraphs: 340, bytes: 40960 });
+
+    await useWorkspace.getState().exportBook("C:/tmp/out.docx");
+
+    const notice = useWorkspace.getState().notice;
+    expect(notice).toContain("12 章");
+    expect(notice).toContain("340 段");
+    expect(useWorkspace.getState().exporting).toBe(false);
+  });
+
+  it("导出失败时报错并复位 exporting", async () => {
+    mocked.exportDocx.mockRejectedValue("写入 docx 失败：磁盘已满");
+
+    await useWorkspace.getState().exportBook("C:/tmp/out.docx");
+
+    expect(useWorkspace.getState().error).toContain("磁盘已满");
+    expect(useWorkspace.getState().exporting).toBe(false);
+    expect(useWorkspace.getState().notice).toBeNull();
   });
 });
