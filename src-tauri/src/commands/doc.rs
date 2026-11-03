@@ -88,9 +88,14 @@ pub fn save_doc(
     let next = md::replace_body(&original, &body);
     atomic::write_atomic(&abs, next.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
 
-    // 索引增量更新，否则刚写完就搜索会读到旧内容
+    // 两个索引都做增量更新，否则刚写完就搜索/查反链会读到旧内容。
+    // 共用同一份 DocInput，避免重复解析 front matter。
+    let input = engine_search::DocInput::from_text(path.clone(), &next);
     if let Ok(mut index) = state.index.lock() {
-        index.upsert(engine_search::DocInput::from_text(path.clone(), &next));
+        index.upsert(input.clone());
+    }
+    if let Ok(mut links) = state.links.lock() {
+        links.upsert(&input);
     }
 
     let stamp = FileStamp::of(&abs).map_err(|e| format!("写入后读取文件戳失败：{e}"))?;

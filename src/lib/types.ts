@@ -87,3 +87,21 @@ export interface SearchHit {
   /** 首个命中位置附近的片段，两端截断处带省略号 */
   snippet: string;
 }
+
+/** 一条反链：某章引用了当前章 */
+export interface BacklinkHit {
+  path: string;
+  title: string;
+  dir: string;
+  /** 该章引用当前章的次数 */
+  count: number;
+  /** 每处引用的上下文片段 */
+  contexts: string[];
+}
+
+/** 悬空链接：指向了稿库中不存在的标题 */
+export interface DanglingLink {
+  target: string;
+  sourcePath: string;
+  sourceTitle: string;
+}

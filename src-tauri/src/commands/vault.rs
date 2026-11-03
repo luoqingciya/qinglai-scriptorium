@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::State;
 
+use crate::engine::links::LinkIndex;
 use crate::engine::search::SearchIndex;
 use crate::engine::vault as engine_vault;
 use crate::AppState;
@@ -14,18 +15,29 @@ pub fn require_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
     guard.clone().ok_or_else(|| "尚未打开稿库".to_string())
 }
 
-/// 扫描稿库并重建内存索引。两者共用同一次磁盘遍历，避免为建索引再读一遍。
+/// 扫描稿库并重建内存索引。检索与双链共用同一次磁盘遍历。
 fn scan_and_index(
     root: &Path,
     state: &State<'_, AppState>,
 ) -> Result<engine_vault::VaultSnapshot, String> {
     let outcome = engine_vault::scan_with_docs(root)?;
 
-    let mut index = state
-        .index
-        .lock()
-        .map_err(|_| "状态锁已中毒".to_string())?;
-    *index = SearchIndex::from_docs(outcome.docs);
+    // 双链索引先建：它借用 docs，检索索引再 move 走，省一次正文克隆
+    {
+        let mut links = state
+            .links
+            .lock()
+            .map_err(|_| "状态锁已中毒".to_string())?;
+        *links = LinkIndex::from_docs(&outcome.docs);
+    }
+
+    {
+        let mut index = state
+            .index
+            .lock()
+            .map_err(|_| "状态锁已中毒".to_string())?;
+        *index = SearchIndex::from_docs(outcome.docs);
+    }
 
     Ok(outcome.snapshot)
 }
@@ -86,7 +98,15 @@ pub fn rename_doc(
 #[tauri::command]
 pub fn delete_doc(path: String, state: State<'_, AppState>) -> Result<String, String> {
     let root = require_root(&state)?;
-    engine_vault::delete_document(&root, &path)
+    let moved = engine_vault::delete_document(&root, &path)?;
+
+    // 前端随后会 refresh 全量重建，但这里先摘掉边，避免「删除到重建之间」
+    // 这一小段窗口里反链仍指向已不存在的章节。
+    if let Ok(mut links) = state.links.lock() {
+        links.forget(&path);
+    }
+
+    Ok(moved)
 }
 
 /// 同目录内上移或下移一章，返回发生的路径变化（前端据此修正当前打开的文件）。

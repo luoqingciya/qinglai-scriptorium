@@ -18,9 +18,14 @@ export function StatusBar() {
   const saveState = useWorkspace((s) => s.saveState);
   const focusMode = useWorkspace((s) => s.focusMode);
   const toggleFocus = useWorkspace((s) => s.toggleFocus);
+  const backlinks = useWorkspace((s) => s.backlinks);
+  const backlinksOpen = useWorkspace((s) => s.backlinksOpen);
+  const toggleBacklinks = useWorkspace((s) => s.toggleBacklinks);
 
   const themeLabel = useTheme((s) => s.label);
   const cycleTheme = useTheme((s) => s.cycle);
+
+  const backlinkTotal = backlinks.reduce((sum, hit) => sum + hit.count, 0);
 
   return (
     <footer className="statusbar">
@@ -37,6 +42,19 @@ export function StatusBar() {
       )}
       <span className="status-sep" />
       <span className={`status-save is-${saveState}`}>{SAVE_LABEL[saveState]}</span>
+      {doc && (
+        <>
+          <span className="status-sep" />
+          <button
+            type="button"
+            className={`status-button${backlinksOpen ? " is-on" : ""}`}
+            title={backlinksOpen ? "收起反链面板" : "展开反链面板"}
+            onClick={toggleBacklinks}
+          >
+            反链 {backlinkTotal}
+          </button>
+        </>
+      )}
       <span className="status-sep" />
       <button
         type="button"

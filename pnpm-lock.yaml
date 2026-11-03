@@ -23,6 +23,9 @@ importers:
       '@milkdown/preset-commonmark':
         specifier: 7.23.0
         version: 7.23.0
+      '@milkdown/prose':
+        specifier: 7.23.0
+        version: 7.23.0
       '@milkdown/utils':
         specifier: 7.23.0
         version: 7.23.0

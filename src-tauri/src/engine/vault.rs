@@ -1089,4 +1089,48 @@ mod tests {
         assert_eq!(outcome.docs[0].title, outcome.snapshot.chapters[0].title);
         assert_eq!(outcome.docs[0].dir, outcome.snapshot.chapters[0].dir);
     }
+
+    #[test]
+    fn 端到端双链反链() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(
+            root,
+            "001-楔子.md",
+            "---\ntitle: 楔子\norder: 1\n---\n\n他想起[[夜航]]上那句话。\n",
+        );
+        write(
+            root,
+            "002-夜航.md",
+            "---\ntitle: 夜航\norder: 2\n---\n\n夜航的正文。\n",
+        );
+
+        let index = crate::engine::links::LinkIndex::from_docs(&scan_with_docs(root).unwrap().docs);
+        let hits = index.backlinks("002-夜航.md");
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "楔子");
+        assert!(hits[0].contexts[0].contains("夜航"));
+        assert!(index.dangling().is_empty());
+    }
+
+    #[test]
+    fn 端到端_front_matter_里的双链不被索引() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // 元数据里出现的 [[夜航]] 只是普通字符串，不是引用
+        write(
+            root,
+            "001-楔子.md",
+            "---\ntitle: 楔子\norder: 1\nnote: \"[[夜航]]\"\n---\n\n正文没有链接。\n",
+        );
+        write(
+            root,
+            "002-夜航.md",
+            "---\ntitle: 夜航\norder: 2\n---\n\n正文。\n",
+        );
+
+        let index = crate::engine::links::LinkIndex::from_docs(&scan_with_docs(root).unwrap().docs);
+        assert!(index.backlinks("002-夜航.md").is_empty());
+    }
 }

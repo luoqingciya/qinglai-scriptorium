@@ -6,6 +6,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  BacklinkHit,
+  DanglingLink,
   Direction,
   DocPayload,
   FileStamp,
@@ -63,4 +65,24 @@ export function saveDoc(
 
 export function countWords(text: string, countPunctuation = false): Promise<WordCount> {
   return invoke<WordCount>("count_words", { text, countPunctuation });
+}
+
+/** 查询某章的反链：哪些章节引用了它 */
+export function backlinks(path: string): Promise<BacklinkHit[]> {
+  return invoke<BacklinkHit[]>("backlinks", { path });
+}
+
+/** 查询某章指向的标题（去重，保持首次出现顺序） */
+export function outlinks(path: string): Promise<string[]> {
+  return invoke<string[]>("outlinks", { path });
+}
+
+/** 全库悬空链接：指向了不存在的章节 */
+export function danglingLinks(): Promise<DanglingLink[]> {
+  return invoke<DanglingLink[]>("dangling_links");
+}
+
+/** 把 `[[标题]]` 解析成章节路径，找不到返回 null */
+export function resolveLink(target: string): Promise<string | null> {
+  return invoke<string | null>("resolve_link", { target });
 }

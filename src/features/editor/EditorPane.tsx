@@ -13,6 +13,7 @@ export function EditorPane() {
   const containerRef = useRef<HTMLDivElement>(null);
   const setBody = useWorkspace((s) => s.setBody);
   const adoptBaseline = useWorkspace((s) => s.adoptBaseline);
+  const openByTitle = useWorkspace((s) => s.openByTitle);
   // 与 doc.body 分开：崩溃恢复时编辑器要以日志内容挂载，而 doc.body 仍是磁盘上的内容
   const editorContent = useWorkspace((s) => s.editorContent);
 
@@ -21,6 +22,7 @@ export function EditorPane() {
     initialMarkdown: editorContent,
     onChange: setBody,
     onBaseline: adoptBaseline,
+    onWikilinkClick: (target) => void openByTitle(target),
   });
 
   return (
