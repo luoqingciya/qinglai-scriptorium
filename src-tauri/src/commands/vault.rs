@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::State;
 
+use crate::engine::characters::CharacterIndex;
 use crate::engine::links::LinkIndex;
 use crate::engine::search::SearchIndex;
 use crate::engine::vault as engine_vault;
@@ -22,13 +23,21 @@ fn scan_and_index(
 ) -> Result<engine_vault::VaultSnapshot, String> {
     let outcome = engine_vault::scan_with_docs(root)?;
 
-    // 双链索引先建：它借用 docs，检索索引再 move 走，省一次正文克隆
+    // 双链与人物索引先建：它们借用 docs，检索索引最后 move 走，省一次正文克隆
     {
         let mut links = state
             .links
             .lock()
             .map_err(|_| "状态锁已中毒".to_string())?;
         *links = LinkIndex::from_docs(&outcome.docs);
+    }
+
+    {
+        let mut characters = state
+            .characters
+            .lock()
+            .map_err(|_| "状态锁已中毒".to_string())?;
+        *characters = CharacterIndex::from_docs(&outcome.docs);
     }
 
     {
@@ -104,6 +113,9 @@ pub fn delete_doc(path: String, state: State<'_, AppState>) -> Result<String, St
     // 这一小段窗口里反链仍指向已不存在的章节。
     if let Ok(mut links) = state.links.lock() {
         links.forget(&path);
+    }
+    if let Ok(mut characters) = state.characters.lock() {
+        characters.forget(&path);
     }
 
     Ok(moved)

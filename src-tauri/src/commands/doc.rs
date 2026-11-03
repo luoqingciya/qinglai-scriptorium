@@ -97,6 +97,9 @@ pub fn save_doc(
     if let Ok(mut links) = state.links.lock() {
         links.upsert(&input);
     }
+    if let Ok(mut characters) = state.characters.lock() {
+        characters.upsert(&input);
+    }
 
     let stamp = FileStamp::of(&abs).map_err(|e| format!("写入后读取文件戳失败：{e}"))?;
     let config = engine_vault::load_config(&root);

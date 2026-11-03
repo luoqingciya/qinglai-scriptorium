@@ -193,6 +193,8 @@ pub fn scan_with_docs(root: &Path) -> Result<ScanOutcome, String> {
             title,
             dir,
             body: split.body.to_string(),
+            characters: front.characters,
+            pov: front.pov,
         });
     }
 

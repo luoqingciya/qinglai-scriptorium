@@ -19,6 +19,8 @@ pub struct AppState {
     pub(crate) index: Mutex<engine::search::SearchIndex>,
     /// `[[双链]]` 的引用索引。同样纯内存、随扫描重建。
     pub(crate) links: Mutex<engine::links::LinkIndex>,
+    /// 人物出场索引。同样纯内存、随扫描重建。
+    pub(crate) characters: Mutex<engine::characters::CharacterIndex>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -38,6 +40,7 @@ pub fn run() {
             commands::links::outlinks,
             commands::links::dangling_links,
             commands::links::resolve_link,
+            commands::characters::list_characters,
             commands::export::export_docx,
             commands::doc::read_doc,
             commands::doc::save_doc,

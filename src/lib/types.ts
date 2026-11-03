@@ -142,3 +142,21 @@ export interface TodayStat {
   words: number;
   delta: number;
 }
+
+/** 某角色在某一章的出场记录 */
+export interface Appearance {
+  path: string;
+  title: string;
+  dir: string;
+  /** 是否为该章的视角人物 */
+  isPov: boolean;
+}
+
+/** 一个角色的完整档案 */
+export interface CharacterCard {
+  name: string;
+  /** 出场章节，按路径排序（即目录树顺序） */
+  appearances: Appearance[];
+  /** 其中作为视角人物的章数 */
+  povCount: number;
+}

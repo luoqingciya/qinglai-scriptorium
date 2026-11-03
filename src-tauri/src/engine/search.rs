@@ -32,16 +32,36 @@ pub struct SearchHit {
     pub snippet: String,
 }
 
-/// 建索引用的一篇文档
+/// 建索引用的一篇文档。
+///
+/// 同时被检索索引、双链索引、人物索引消费，所以除正文外还带着 front matter 里
+/// 与索引相关的字段。一次扫描喂三个索引，避免各扫一遍盘。
 #[derive(Debug, Clone)]
 pub struct DocInput {
     pub path: String,
     pub title: String,
     pub dir: String,
     pub body: String,
+    /// 出场人物（front matter `characters`）
+    pub characters: Vec<String>,
+    /// 视角人物（front matter `pov`）
+    pub pov: Option<String>,
 }
 
 impl DocInput {
+    /// 供测试构造，省略索引无关的元数据。
+    #[cfg(test)]
+    pub fn new(path: &str, title: &str, dir: &str, body: &str) -> Self {
+        Self {
+            path: path.to_string(),
+            title: title.to_string(),
+            dir: dir.to_string(),
+            body: body.to_string(),
+            characters: Vec::new(),
+            pov: None,
+        }
+    }
+
     /// 从磁盘原文构造，供保存后增量更新索引使用。
     pub fn from_text(path: String, text: &str) -> Self {
         let split = md::split(text);
@@ -66,6 +86,8 @@ impl DocInput {
             title,
             dir,
             body: split.body.to_string(),
+            characters: front.characters,
+            pov: front.pov,
         }
     }
 }
@@ -293,12 +315,7 @@ mod tests {
     use super::*;
 
     fn doc(path: &str, body: &str) -> DocInput {
-        DocInput {
-            path: path.to_string(),
-            title: path.to_string(),
-            dir: String::new(),
-            body: body.to_string(),
-        }
+        DocInput::new(path, path, "", body)
     }
 
     fn index_of(docs: Vec<(&str, &str)>) -> SearchIndex {
@@ -458,12 +475,7 @@ mod tests {
         let docs: Vec<DocInput> = (0..CHAPTERS)
             .map(|i| {
                 let body = PARAGRAPH.repeat(10);
-                DocInput {
-                    path: format!("卷一/{i:03}-章.md"),
-                    title: format!("第{i}章"),
-                    dir: "卷一".to_string(),
-                    body,
-                }
+                DocInput::new(&format!("卷一/{i:03}-章.md"), &format!("第{i}章"), "卷一", &body)
             })
             .collect();
 
