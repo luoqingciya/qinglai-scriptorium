@@ -35,6 +35,8 @@ pub struct ChapterEntry {
     pub status: Option<DocStatus>,
     pub words: u64,
     pub id: Option<String>,
+    /// 一句话情节摘要，未写时为 None
+    pub summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +188,8 @@ pub fn scan_with_docs(root: &Path) -> Result<ScanOutcome, String> {
             status: front.status,
             words: words.total,
             id: front.id,
+            // 空串归一成 None，避免大纲里出现「写了但等于没写」的空摘要
+            summary: front.summary.filter(|s| !s.trim().is_empty()),
         });
 
         docs.push(super::search::DocInput {
@@ -1117,8 +1121,7 @@ mod tests {
     }
 
     #[test]
-    fn 端到端_front_matter_里的双链不被索引() {
-        let dir = tempfile::tempdir().unwrap();
+    fn 端到端_front_matter_里的双链不被索引() {        let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         // 元数据里出现的 [[夜航]] 只是普通字符串，不是引用
         write(
@@ -1134,5 +1137,123 @@ mod tests {
 
         let index = crate::engine::links::LinkIndex::from_docs(&scan_with_docs(root).unwrap().docs);
         assert!(index.backlinks("002-夜航.md").is_empty());
+    }
+
+    #[test]
+    fn 扫描读出台词摘要() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(
+            root,
+            "001-楔子.md",
+            "---\ntitle: 楔子\norder: 1\nsummary: 沈砚在清籁斋听铁马，交代师父的旧话。\n---\n\n正文。\n",
+        );
+
+        let snapshot = scan_with_docs(root).unwrap().snapshot;
+        assert_eq!(
+            snapshot.chapters[0].summary.as_deref(),
+            Some("沈砚在清籁斋听铁马，交代师父的旧话。")
+        );
+    }
+
+    #[test]
+    fn 没写摘要时为_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "001-楔子.md", "---\ntitle: 楔子\n---\n\n正文。\n");
+
+        let snapshot = scan_with_docs(root).unwrap().snapshot;
+        assert!(snapshot.chapters[0].summary.is_none());
+    }
+
+    #[test]
+    fn 空摘要归一成_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        // 用户清空摘要后文件里会留下 `summary: ""`
+        write(root, "001-楔子.md", "---\ntitle: 楔子\nsummary: \"\"\n---\n\n正文。\n");
+        write(root, "002-夜航.md", "---\ntitle: 夜航\nsummary: \"   \"\n---\n\n正文。\n");
+
+        let snapshot = scan_with_docs(root).unwrap().snapshot;
+        assert!(snapshot.chapters[0].summary.is_none(), "空串应归一成 None");
+        assert!(snapshot.chapters[1].summary.is_none(), "纯空白也应归一成 None");
+    }
+
+    #[test]
+    fn 改写摘要只动那一行() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let original = "---\ntitle: 楔子\norder: 1\ncharacters:\n  - 沈砚\npov: 沈砚\n---\n\n正文第一段。\n";
+        write(root, "001-楔子.md", original);
+
+        let abs = root.join("001-楔子.md");
+        let text = fs::read_to_string(&abs).unwrap();
+        let next = md::set_scalar(&text, "summary", "一句话摘要");
+        fs::write(&abs, &next).unwrap();
+
+        let after = fs::read_to_string(&abs).unwrap();
+        assert!(after.contains("summary: 一句话摘要"));
+        // 其余字节原样保留
+        assert!(after.contains("title: 楔子"));
+        assert!(after.contains("characters:\n  - 沈砚"));
+        assert!(after.contains("pov: 沈砚"));
+        assert!(after.contains("正文第一段。"));
+        assert!(!after.contains("order: 2"), "不该凭空改动其他字段");
+    }
+
+    #[test]
+    fn 没有_front_matter_时改写摘要会自动创建头部() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "001-楔子.md", "只有正文，没有元数据。\n");
+
+        let abs = root.join("001-楔子.md");
+        let text = fs::read_to_string(&abs).unwrap();
+        let next = md::set_scalar(&text, "summary", "新摘要");
+        fs::write(&abs, &next).unwrap();
+
+        let snapshot = scan_with_docs(root).unwrap().snapshot;
+        assert_eq!(snapshot.chapters[0].summary.as_deref(), Some("新摘要"));
+        // 正文没被吃掉
+        let after = fs::read_to_string(&abs).unwrap();
+        assert!(after.contains("只有正文，没有元数据。"));
+    }
+
+    #[test]
+    fn 摘要里的特殊字符被正确转义() {        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "001-楔子.md", "---\ntitle: 楔子\n---\n\n正文。\n");
+
+        let abs = root.join("001-楔子.md");
+        let text = fs::read_to_string(&abs).unwrap();
+        let next = md::set_scalar(&text, "summary", "他说：「风过了，字还在。」");
+        fs::write(&abs, &next).unwrap();
+
+        let snapshot = scan_with_docs(root).unwrap().snapshot;
+        assert_eq!(
+            snapshot.chapters[0].summary.as_deref(),
+            Some("他说：「风过了，字还在。」"),
+            "引号与全角标点应能原样往返"
+        );
+    }
+
+    /// 仓库示例稿库的每章都应带摘要，大纲视图才有东西可看。
+    #[test]
+    fn 扫描仓库示例稿库的摘要() {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/sample-vault");
+        if !root.is_dir() {
+            return; // 示例库不在时跳过
+        }
+
+        let snapshot = scan_with_docs(&root).unwrap().snapshot;
+        assert_eq!(snapshot.chapters.len(), 3);
+        for chapter in &snapshot.chapters {
+            assert!(
+                chapter.summary.is_some(),
+                "示例库的「{}」缺少 summary",
+                chapter.title
+            );
+        }
     }
 }

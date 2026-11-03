@@ -35,6 +35,7 @@ pub fn run() {
             commands::vault::rename_doc,
             commands::vault::delete_doc,
             commands::vault::reorder_doc,
+            commands::vault::update_summary,
             commands::search::search_vault,
             commands::links::backlinks,
             commands::links::outlinks,

@@ -36,6 +36,12 @@ pub struct FrontMatter {
     pub characters: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pov: Option<String>,
+    /// 一句话情节摘要，供大纲视图使用。
+    ///
+    /// 放在 front matter 而不是独立大纲文件：摘要属于这一章，同文件存储不会
+    /// 因重命名、移动、重排而失步。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
     /// 派生缓存值。写入端不主动刷新，避免每次保存都改动 front matter 造成无谓 diff。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub words: Option<u64>,

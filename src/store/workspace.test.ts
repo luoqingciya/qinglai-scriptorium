@@ -25,6 +25,7 @@ vi.mock("../lib/ipc", () => ({
   recordStats: vi.fn(),
   statsHistory: vi.fn(),
   listCharacters: vi.fn(),
+  updateSummary: vi.fn(),
 }));
 
 import * as ipc from "../lib/ipc";
@@ -60,6 +61,7 @@ function makeSnapshot(paths: string[]): VaultSnapshot {
       status: null,
       words: 0,
       id: null,
+      summary: null,
     })),
     totalWords: 0,
     scannedMs: 0,
@@ -110,6 +112,7 @@ beforeEach(() => {
     todayStat: null,
     statsOpen: false,
     characters: [],
+    outlineOpen: false,
   });
 });
 
@@ -632,5 +635,114 @@ describe("人物索引", () => {
     await Promise.resolve();
 
     expect(mocked.listCharacters).toHaveBeenCalled();
+  });
+});
+
+describe("大纲与摘要", () => {
+  it("改写摘要后同步 snapshot", async () => {
+    useWorkspace.setState({ snapshot: makeSnapshot(["a.md"]) });
+    mocked.updateSummary.mockResolvedValue(undefined);
+
+    await useWorkspace.getState().setSummary("a.md", "  一句话摘要  ");
+
+    const chapter = useWorkspace.getState().snapshot?.chapters[0];
+    expect(chapter?.summary).toBe("一句话摘要");
+    // 落盘前 trim，避免把用户手抖的空格写进 front matter
+    expect(mocked.updateSummary).toHaveBeenCalledWith("a.md", "  一句话摘要  ");
+  });
+
+  it("清空摘要时 snapshot 里归一成 null", async () => {
+    useWorkspace.setState({ snapshot: makeSnapshot(["a.md"]) });
+    mocked.updateSummary.mockResolvedValue(undefined);
+
+    await useWorkspace.getState().setSummary("a.md", "   ");
+
+    expect(useWorkspace.getState().snapshot?.chapters[0]?.summary).toBeNull();
+  });
+
+  it("改当前章的摘要会刷新文件戳，但不覆盖正文", async () => {
+    // 这是最容易漏的一步：改 front matter 会改 mtime，若 stamp 不刷新，
+    // 用户回到编辑器继续写时，自动保存会误报「文件已被外部修改」。
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "正文内容"),
+      body: "正文内容",
+      lastSaved: "正文内容",
+    });
+
+    mocked.updateSummary.mockResolvedValue(undefined);
+    mocked.readDoc.mockResolvedValue({
+      ...makeDoc("a.md", "正文内容"),
+      stamp: { mtimeMs: 999, len: 12 },
+    });
+
+    await useWorkspace.getState().setSummary("a.md", "摘要");
+
+    const state = useWorkspace.getState();
+    expect(state.doc?.stamp.mtimeMs).toBe(999);
+    // 正文不能被磁盘内容覆盖 —— body 里可能有尚未落盘的编辑
+    expect(state.body).toBe("正文内容");
+    expect(state.doc?.body).toBe("正文内容");
+  });
+
+  it("改其他章的摘要不动当前文档", async () => {
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md", "b.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "甲"),
+      body: "甲",
+      lastSaved: "甲",
+    });
+    mocked.updateSummary.mockResolvedValue(undefined);
+
+    await useWorkspace.getState().setSummary("b.md", "乙的摘要");
+
+    expect(mocked.readDoc).not.toHaveBeenCalled();
+    expect(useWorkspace.getState().doc?.path).toBe("a.md");
+    const chapters = useWorkspace.getState().snapshot?.chapters ?? [];
+    expect(chapters.find((c) => c.path === "b.md")?.summary).toBe("乙的摘要");
+  });
+
+  it("改当前章摘要前先落盘未保存的正文", async () => {
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+    useWorkspace.getState().setBody("新正文");
+
+    mocked.saveDoc.mockResolvedValue({
+      kind: "saved",
+      stamp: { mtimeMs: 5, len: 9 },
+      words: WORDS,
+    });
+    mocked.updateSummary.mockResolvedValue(undefined);
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "新正文"));
+
+    await useWorkspace.getState().setSummary("a.md", "摘要");
+
+    const saveOrder = mocked.saveDoc.mock.invocationCallOrder[0] ?? 0;
+    const summaryOrder = mocked.updateSummary.mock.invocationCallOrder[0] ?? 0;
+    expect(saveOrder).toBeLessThan(summaryOrder);
+  });
+
+  it("写入失败时报错", async () => {
+    useWorkspace.setState({ snapshot: makeSnapshot(["a.md"]) });
+    mocked.updateSummary.mockRejectedValue("写入失败：磁盘只读");
+
+    await useWorkspace.getState().setSummary("a.md", "摘要");
+
+    expect(useWorkspace.getState().error).toContain("磁盘只读");
+  });
+
+  it("toggleOutline 切换大纲视图", () => {
+    expect(useWorkspace.getState().outlineOpen).toBe(false);
+    useWorkspace.getState().toggleOutline();
+    expect(useWorkspace.getState().outlineOpen).toBe(true);
+    useWorkspace.getState().toggleOutline();
+    expect(useWorkspace.getState().outlineOpen).toBe(false);
   });
 });

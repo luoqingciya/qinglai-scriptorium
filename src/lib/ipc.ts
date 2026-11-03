@@ -119,3 +119,8 @@ export function statsHistory(limit = 30): Promise<TrendPoint[]> {
 export function listCharacters(): Promise<CharacterCard[]> {
   return invoke<CharacterCard[]>("list_characters");
 }
+
+/** 改写一章的情节摘要（只动 front matter 的 summary 行） */
+export function updateSummary(path: string, summary: string): Promise<void> {
+  return invoke<void>("update_summary", { path, summary });
+}

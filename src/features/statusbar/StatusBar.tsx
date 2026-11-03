@@ -27,6 +27,8 @@ export function StatusBar() {
   const exportBook = useWorkspace((s) => s.exportBook);
   const toggleStats = useWorkspace((s) => s.toggleStats);
   const todayStat = useWorkspace((s) => s.todayStat);
+  const outlineOpen = useWorkspace((s) => s.outlineOpen);
+  const toggleOutline = useWorkspace((s) => s.toggleOutline);
 
   const themeLabel = useTheme((s) => s.label);
   const cycleTheme = useTheme((s) => s.cycle);
@@ -85,6 +87,17 @@ export function StatusBar() {
             反链 {backlinkTotal}
           </button>
         </>
+      )}
+      <span className="status-sep" />
+      {snapshot && (
+        <button
+          type="button"
+          className={`status-button${outlineOpen ? " is-on" : ""}`}
+          title={outlineOpen ? "回到编辑" : "查看全书大纲"}
+          onClick={toggleOutline}
+        >
+          大纲
+        </button>
       )}
       <span className="status-sep" />
       {snapshot && (

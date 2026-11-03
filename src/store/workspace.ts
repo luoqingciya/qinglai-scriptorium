@@ -123,6 +123,12 @@ interface WorkspaceState {
   characters: CharacterCard[];
   loadCharacters: () => Promise<void>;
 
+  /** 大纲视图是否打开（占据主区域） */
+  outlineOpen: boolean;
+  toggleOutline: () => void;
+  /** 改写某章的情节摘要 */
+  setSummary: (path: string, summary: string) => Promise<void>;
+
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
   openDoc: (path: string) => Promise<void>;
@@ -242,6 +248,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     todayStat: null,
     statsOpen: false,
     characters: [],
+    outlineOpen: false,
     searchQuery: "",
     searchResults: [],
     searching: false,
@@ -324,6 +331,47 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       } catch {
         // 人物索引是派生信息，读不到就留空
         set({ characters: [] });
+      }
+    },
+
+    toggleOutline: () => set({ outlineOpen: !get().outlineOpen }),
+
+    /**
+     * 改写情节摘要。
+     *
+     * 这里有个不显眼但会咬人的点：改 front matter 会改变文件的 mtime，
+     * 而 `doc.stamp` 还停在上次读到的值。若不刷新，用户回到编辑器继续写、
+     * 触发自动保存时会误报「文件已被外部修改」——明明是自己刚改的摘要。
+     *
+     * 所以改完要重新读一次文件戳。只更新 stamp，不动 body：body 里可能
+     * 有尚未落盘的编辑，用磁盘内容覆盖会丢字。
+     */
+    setSummary: async (path, summary) => {
+      try {
+        // 目标章若正是当前章，先把待保存的正文落盘，避免读到旧正文
+        if (get().activePath === path) await get().flush();
+
+        await ipc.updateSummary(path, summary);
+        const trimmed = summary.trim();
+
+        const snapshot = get().snapshot;
+        if (snapshot) {
+          const chapters = snapshot.chapters.map((c) =>
+            c.path === path ? { ...c, summary: trimmed || null } : c,
+          );
+          set({ snapshot: { ...snapshot, chapters } });
+        }
+
+        const doc = get().doc;
+        if (doc && doc.path === path) {
+          const fresh = await ipc.readDoc(path);
+          const latest = get().doc;
+          if (latest && latest.path === path) {
+            set({ doc: { ...latest, stamp: fresh.stamp } });
+          }
+        }
+      } catch (err) {
+        set({ error: String(err) });
       }
     },
 
