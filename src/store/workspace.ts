@@ -10,7 +10,7 @@ import {
   writeLastVault,
   type JournalEntry,
 } from "../lib/journal";
-import type { Direction, DocPayload, VaultSnapshot, WordCount } from "../lib/types";
+import type { Direction, DocPayload, SearchHit, VaultSnapshot, WordCount } from "../lib/types";
 
 /** 自动保存防抖间隔。800ms 是「几乎感觉不到延迟」与「不会每敲一个字都写盘」的折中。 */
 export const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -45,6 +45,13 @@ interface WorkspaceState {
   saveState: SaveState;
   error: string | null;
 
+  /** 当前检索词 */
+  searchQuery: string;
+  searchResults: SearchHit[];
+  searching: boolean;
+  runSearch: (query: string) => Promise<void>;
+  clearSearch: () => void;
+
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
   openDoc: (path: string) => Promise<void>;
@@ -64,6 +71,9 @@ interface WorkspaceState {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let journalTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 检索请求序号，用于丢弃过期结果（打字快时会有多个请求在飞） */
+let searchSeq = 0;
 
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
@@ -126,6 +136,9 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     words: EMPTY_WORDS,
     saveState: "idle",
     error: null,
+    searchQuery: "",
+    searchResults: [],
+    searching: false,
 
     openVault: async (path) => {
       try {
@@ -152,9 +165,38 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       try {
         const snapshot = await ipc.scanVault();
         set({ snapshot });
+        // 章节有增删改时，检索结果里的路径可能已失效，顺手重跑一次
+        const query = get().searchQuery;
+        if (query.trim()) await get().runSearch(query);
       } catch (err) {
         set({ error: String(err), saveState: "error" });
       }
+    },
+
+    runSearch: async (query) => {
+      const seq = ++searchSeq;
+      set({ searchQuery: query });
+
+      if (!query.trim()) {
+        set({ searchResults: [], searching: false });
+        return;
+      }
+
+      set({ searching: true });
+      try {
+        const hits = await ipc.searchVault(query, 50);
+        // 打字快时会有多个请求在飞，只认最后一个
+        if (seq !== searchSeq) return;
+        set({ searchResults: hits, searching: false });
+      } catch (err) {
+        if (seq !== searchSeq) return;
+        set({ searchResults: [], searching: false, error: String(err) });
+      }
+    },
+
+    clearSearch: () => {
+      searchSeq += 1;
+      set({ searchQuery: "", searchResults: [], searching: false });
     },
 
     openDoc: async (path) => {

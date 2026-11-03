@@ -9,12 +9,14 @@ mod engine;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-/// 应用级状态：当前打开的稿库根目录。
+/// 应用级状态：当前打开的稿库根目录与内存检索索引。
 ///
 /// 前端不持有任意路径的读写权限，所有文件操作都经 command 并在此校验根目录边界。
 #[derive(Default)]
 pub struct AppState {
-    pub root: Mutex<Option<PathBuf>>,
+    pub(crate) root: Mutex<Option<PathBuf>>,
+    /// 全文检索索引。纯内存、可随时重建，与「文件即真相」的前提一致。
+    pub(crate) index: Mutex<engine::search::SearchIndex>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,6 +31,7 @@ pub fn run() {
             commands::vault::rename_doc,
             commands::vault::delete_doc,
             commands::vault::reorder_doc,
+            commands::search::search_vault,
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::stats::count_words,
