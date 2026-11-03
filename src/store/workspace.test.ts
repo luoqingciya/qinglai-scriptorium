@@ -593,8 +593,9 @@ describe("人物索引", () => {
 
     await useWorkspace.getState().loadCharacters();
 
-    expect(useWorkspace.getState().characters).toHaveLength(1);
-    expect(useWorkspace.getState().characters[0].name).toBe("沈砚");
+    const cards = useWorkspace.getState().characters;
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.name).toBe("沈砚");
   });
 
   it("加载失败时留空且不报错", async () => {
