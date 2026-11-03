@@ -1,4 +1,7 @@
-:root {
+/* ------------------------------------------------------------ 主题变量 */
+
+:root,
+:root[data-theme="dark"] {
   --bg: #14141c;
   --bg-panel: #191922;
   --bg-hover: #22222f;
@@ -12,7 +15,47 @@
   --ok: #5dc9a0;
   --warn: #e0a94a;
   --err: #e2685c;
+  --scrollbar-thumb: #2f2f3d;
+  --scrollbar-thumb-hover: #3d3d4d;
+}
 
+:root[data-theme="light"] {
+  --bg: #f7f5f0;
+  --bg-panel: #fff;
+  --bg-hover: #ede9e0;
+  --bg-active: #e8e0d4;
+  --border: #d8d2c8;
+  --text: #2a2620;
+  --text-dim: #6a6258;
+  --text-faint: #9a9088;
+  --accent: #b04030;
+  --accent-soft: rgba(176, 64, 48, 0.12);
+  --ok: #2a9a70;
+  --warn: #b88a30;
+  --err: #c0584c;
+  --scrollbar-thumb: #c8c0b4;
+  --scrollbar-thumb-hover: #b0a89c;
+}
+
+:root[data-theme="sepia"] {
+  --bg: #f2e8d5;
+  --bg-panel: #ebe0c9;
+  --bg-hover: #e0d4ba;
+  --bg-active: #d8c8a8;
+  --border: #c8b898;
+  --text: #3a3020;
+  --text-dim: #7a6c50;
+  --text-faint: #a89878;
+  --accent: #9a4030;
+  --accent-soft: rgba(154, 64, 48, 0.14);
+  --ok: #4a8a60;
+  --warn: #a87830;
+  --err: #b85040;
+  --scrollbar-thumb: #c0b090;
+  --scrollbar-thumb-hover: #a89878;
+}
+
+:root {
   --font-serif: "Source Han Serif SC", "Noto Serif CJK SC", "Source Han Serif CN",
     "Songti SC", "SimSun", Georgia, serif;
   --font-sans: "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI",
@@ -49,13 +92,18 @@ button {
   cursor: pointer;
 }
 
-/* ---------------------------------------------------------------- 布局 */
+/* ------------------------------------------------------------ 布局 */
 
 .app {
   display: grid;
   grid-template-columns: 280px 1fr;
   grid-template-rows: 1fr auto;
   height: 100%;
+}
+
+/* 专注模式：隐藏目录树，编辑区铺满全宽 */
+.app.is-focus {
+  grid-template-columns: 1fr;
 }
 
 .workspace {
@@ -65,6 +113,10 @@ button {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.app.is-focus .workspace {
+  grid-column: 1;
 }
 
 /* ------------------------------------------------------------ 目录树 */
@@ -272,6 +324,11 @@ button {
   max-width: 42rem;
   margin: 0 auto;
   padding: 56px 40px 40vh;
+}
+
+/* 专注模式给更宽的页面，沉浸阅读 */
+.app.is-focus .editor-page {
+  max-width: 56rem;
 }
 
 .editor-host {
@@ -588,6 +645,22 @@ button {
   color: var(--err);
 }
 
+/* 状态栏按钮 */
+.status-button {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.status-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* ------------------------------------------------------------ 滚动条 */
 
 ::-webkit-scrollbar {
@@ -600,13 +673,13 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2f2f3d;
+  background: var(--scrollbar-thumb);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3d3d4d;
+  background: var(--scrollbar-thumb-hover);
   background-clip: content-box;
 }

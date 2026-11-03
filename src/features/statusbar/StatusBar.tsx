@@ -1,5 +1,6 @@
 import { useWorkspace } from "../../store/workspace";
 import type { SaveState } from "../../store/workspace";
+import { useTheme } from "../../lib/theme-store";
 
 const SAVE_LABEL: Record<SaveState, string> = {
   idle: "就绪",
@@ -15,6 +16,11 @@ export function StatusBar() {
   const doc = useWorkspace((s) => s.doc);
   const words = useWorkspace((s) => s.words);
   const saveState = useWorkspace((s) => s.saveState);
+  const focusMode = useWorkspace((s) => s.focusMode);
+  const toggleFocus = useWorkspace((s) => s.toggleFocus);
+
+  const themeLabel = useTheme((s) => s.label);
+  const cycleTheme = useTheme((s) => s.cycle);
 
   return (
     <footer className="statusbar">
@@ -31,6 +37,24 @@ export function StatusBar() {
       )}
       <span className="status-sep" />
       <span className={`status-save is-${saveState}`}>{SAVE_LABEL[saveState]}</span>
+      <span className="status-sep" />
+      <button
+        type="button"
+        className="status-button"
+        title={focusMode ? "退出专注模式（F11）" : "进入专注模式（F11）"}
+        onClick={toggleFocus}
+      >
+        {focusMode ? "退出专注" : "专注"}
+      </button>
+      <span className="status-sep" />
+      <button
+        type="button"
+        className="status-button"
+        title="切换主题"
+        onClick={cycleTheme}
+      >
+        {themeLabel}
+      </button>
     </footer>
   );
 }
