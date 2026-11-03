@@ -317,12 +317,7 @@ mod tests {
     use super::*;
 
     fn doc(path: &str, title: &str, body: &str) -> DocInput {
-        DocInput {
-            path: path.to_string(),
-            title: title.to_string(),
-            dir: String::new(),
-            body: body.to_string(),
-        }
+        DocInput::new(path, title, "", body)
     }
 
     #[test]

@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   BacklinkHit,
+  CharacterCard,
   DanglingLink,
   Direction,
   DocPayload,
@@ -112,4 +113,9 @@ export function recordStats(totalWords: number): Promise<TodayStat> {
 /** 最近若干天的写作趋势，按日期正序 */
 export function statsHistory(limit = 30): Promise<TrendPoint[]> {
   return invoke<TrendPoint[]>("stats_history", { limit });
+}
+
+/** 全部角色及其出场章节，按出场章数降序 */
+export function listCharacters(): Promise<CharacterCard[]> {
+  return invoke<CharacterCard[]>("list_characters");
 }

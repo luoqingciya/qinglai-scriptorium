@@ -1,3 +1,4 @@
+pub mod characters;
 pub mod doc;
 pub mod export;
 pub mod links;

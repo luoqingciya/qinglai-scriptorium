@@ -177,6 +177,146 @@ button {
   padding: 8px 0 24px;
 }
 
+/* ------------------------------------------------------ 侧栏视图切换 */
+
+.explorer-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.explorer-tab {
+  flex: 1;
+  padding: 8px 0 7px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.explorer-tab:hover {
+  color: var(--text-dim);
+}
+
+.explorer-tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* ------------------------------------------------------------ 人物列表 */
+
+.characters {
+  padding: 4px 0 24px;
+}
+
+.character-item {
+  border-bottom: 1px solid transparent;
+}
+
+.character-item.is-open {
+  border-bottom-color: var(--border);
+}
+
+.character-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px 8px 10px;
+  text-align: left;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+
+.character-head:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.character-arrow {
+  width: 10px;
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.character-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.character-pov {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--warn);
+}
+
+.character-count {
+  min-width: 14px;
+  text-align: right;
+}
+
+.character-appearances {
+  padding: 0 0 6px;
+}
+
+.character-chapter {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 12px 5px 28px;
+  text-align: left;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+
+.character-chapter:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.character-chapter.is-active {
+  background: var(--bg-active);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.character-chapter-title {
+  flex: 1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-chapter-dir {
+  font-size: 10px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.character-chapter-pov {
+  font-size: 9px;
+  color: var(--warn);
+}
+
 .explorer-empty {
   padding: 20px 16px;
   color: var(--text-dim);

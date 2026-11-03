@@ -12,6 +12,7 @@ import {
 } from "../lib/journal";
 import type {
   BacklinkHit,
+  CharacterCard,
   Direction,
   DocPayload,
   SearchHit,
@@ -117,6 +118,10 @@ interface WorkspaceState {
   statsOpen: boolean;
   toggleStats: () => void;
   loadTrend: () => Promise<void>;
+
+  /** 全部角色及其出场章节 */
+  characters: CharacterCard[];
+  loadCharacters: () => Promise<void>;
 
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -236,6 +241,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     trend: [],
     todayStat: null,
     statsOpen: false,
+    characters: [],
     searchQuery: "",
     searchResults: [],
     searching: false,
@@ -311,6 +317,16 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       if (next) void get().loadTrend();
     },
 
+    loadCharacters: async () => {
+      try {
+        const characters = await ipc.listCharacters();
+        set({ characters });
+      } catch {
+        // 人物索引是派生信息，读不到就留空
+        set({ characters: [] });
+      }
+    },
+
     loadTrend: async () => {
       try {
         const trend = await ipc.statsHistory(30);
@@ -346,6 +362,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         await get().checkJournal();
         // 换库后趋势与今日增量都要重取，否则会显示上一个库的数据
         void get().loadTrend();
+        void get().loadCharacters();
         set({ todayStat: null });
       } catch (err) {
         // 上次记住的目录可能已被移动或删除，别让它一直报错
@@ -364,6 +381,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         // 增删改也会改变反链（比如删了一章，引用它的地方就悬空了）
         const active = get().activePath;
         if (active) void get().loadBacklinks(active);
+        // 人物出场也随 front matter 变化
+        void get().loadCharacters();
       } catch (err) {
         set({ error: String(err), saveState: "error" });
       }

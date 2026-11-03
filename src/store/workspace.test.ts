@@ -24,6 +24,7 @@ vi.mock("../lib/ipc", () => ({
   exportDocx: vi.fn(),
   recordStats: vi.fn(),
   statsHistory: vi.fn(),
+  listCharacters: vi.fn(),
 }));
 
 import * as ipc from "../lib/ipc";
@@ -108,6 +109,7 @@ beforeEach(() => {
     trend: [],
     todayStat: null,
     statsOpen: false,
+    characters: [],
   });
 });
 
@@ -576,5 +578,58 @@ describe("写作统计", () => {
 
     useWorkspace.getState().toggleStats();
     expect(useWorkspace.getState().statsOpen).toBe(false);
+  });
+});
+
+describe("人物索引", () => {
+  it("加载全部角色", async () => {
+    mocked.listCharacters.mockResolvedValue([
+      {
+        name: "沈砚",
+        appearances: [{ path: "a.md", title: "甲", dir: "", isPov: true }],
+        povCount: 1,
+      },
+    ]);
+
+    await useWorkspace.getState().loadCharacters();
+
+    expect(useWorkspace.getState().characters).toHaveLength(1);
+    expect(useWorkspace.getState().characters[0].name).toBe("沈砚");
+  });
+
+  it("加载失败时留空且不报错", async () => {
+    mocked.listCharacters.mockRejectedValue("尚未打开稿库");
+
+    await useWorkspace.getState().loadCharacters();
+
+    expect(useWorkspace.getState().characters).toEqual([]);
+    expect(useWorkspace.getState().error).toBeNull();
+  });
+
+  it("打开稿库后自动加载人物", async () => {
+    mocked.openVault.mockResolvedValue(makeSnapshot(["a.md"]));
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "正文"));
+    mocked.backlinks.mockResolvedValue([]);
+    mocked.statsHistory.mockResolvedValue([]);
+    mocked.listCharacters.mockResolvedValue([
+      { name: "阿箬", appearances: [], povCount: 0 },
+    ]);
+
+    await useWorkspace.getState().openVault("/vault");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mocked.listCharacters).toHaveBeenCalled();
+    expect(useWorkspace.getState().characters).toHaveLength(1);
+  });
+
+  it("refresh 后重新加载人物", async () => {
+    mocked.scanVault.mockResolvedValue(makeSnapshot(["a.md"]));
+    mocked.listCharacters.mockResolvedValue([]);
+
+    await useWorkspace.getState().refresh();
+    await Promise.resolve();
+
+    expect(mocked.listCharacters).toHaveBeenCalled();
   });
 });

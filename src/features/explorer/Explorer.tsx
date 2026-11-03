@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import type { ChapterEntry, SearchHit } from "../../lib/types";
 import { useWorkspace } from "../../store/workspace";
+import { CharacterList } from "../characters/CharacterList";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "草稿",
@@ -12,6 +13,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const SEARCH_DEBOUNCE_MS = 200;
+
+/** 侧栏当前显示的内容 */
+type ExplorerView = "chapters" | "characters";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -82,6 +86,8 @@ export function Explorer() {
   /** 检索输入框的即时值，与防抖后的请求分开 */
   const [query, setQuery] = useState("");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 侧栏视图：章节树 / 人物 */
+  const [view, setView] = useState<ExplorerView>("chapters");
 
   const isSearching = query.trim().length > 0;
 
@@ -171,6 +177,35 @@ export function Explorer() {
       )}
 
       {snapshot && (
+        <div className="explorer-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "chapters"}
+            className={`explorer-tab${view === "chapters" ? " is-active" : ""}`}
+            onClick={() => setView("chapters")}
+          >
+            章节
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "characters"}
+            className={`explorer-tab${view === "characters" ? " is-active" : ""}`}
+            onClick={() => setView("characters")}
+          >
+            人物
+          </button>
+        </div>
+      )}
+
+      {snapshot && view === "characters" && (
+        <nav className="explorer-body">
+          <CharacterList />
+        </nav>
+      )}
+
+      {snapshot && view === "chapters" && (
         <nav className="explorer-body">
           <div className="search-box">
             <input
