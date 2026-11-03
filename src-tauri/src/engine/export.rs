@@ -606,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn 关闭缩进时不写_firstLine() {
+    fn 关闭缩进时不写缩进属性() {
         let opts = ExportOptions {
             first_line_chars: 0,
             ..Default::default()

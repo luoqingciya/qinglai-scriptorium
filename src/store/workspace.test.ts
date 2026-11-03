@@ -22,6 +22,8 @@ vi.mock("../lib/ipc", () => ({
   danglingLinks: vi.fn(),
   resolveLink: vi.fn(),
   exportDocx: vi.fn(),
+  recordStats: vi.fn(),
+  statsHistory: vi.fn(),
 }));
 
 import * as ipc from "../lib/ipc";
@@ -63,6 +65,9 @@ function makeSnapshot(paths: string[]): VaultSnapshot {
   };
 }
 
+/** 统计节流的时钟基准，每个测试往后推，避免互相干扰 */
+let statsClock = Date.parse("2026-11-03T10:00:00Z");
+
 function fakeLocalStorage() {
   const map = new Map<string, string>();
   return {
@@ -77,6 +82,11 @@ beforeEach(() => {
   vi.clearAllTimers();
   vi.resetAllMocks();
   vi.stubGlobal("localStorage", fakeLocalStorage());
+
+  // 统计写入有 60 秒节流，且节流时间戳是模块级的。
+  // 每个测试把时钟往后推 2 分钟，避开上一个测试留下的窗口。
+  statsClock += 120_000;
+  vi.setSystemTime(statsClock);
 
   useWorkspace.setState({
     snapshot: null,
@@ -95,6 +105,9 @@ beforeEach(() => {
     focusMode: false,
     backlinks: [],
     backlinksOpen: false,
+    trend: [],
+    todayStat: null,
+    statsOpen: false,
   });
 });
 
@@ -422,5 +435,146 @@ describe("导出 docx", () => {
     expect(useWorkspace.getState().error).toContain("磁盘已满");
     expect(useWorkspace.getState().exporting).toBe(false);
     expect(useWorkspace.getState().notice).toBeNull();
+  });
+});
+
+describe("写作统计", () => {
+  /** 把当前章改脏并让保存返回指定字数 */
+  async function saveWithWords(total: number) {
+    useWorkspace.getState().setBody(`内容 ${total}`);
+    mocked.saveDoc.mockResolvedValue({
+      kind: "saved",
+      stamp: { mtimeMs: total, len: total },
+      words: { cjk: total, latin: 0, punctuation: 0, total },
+    });
+    mocked.recordStats.mockResolvedValue({
+      date: "2026-11-03",
+      words: total,
+      delta: total,
+    });
+    await useWorkspace.getState().flush();
+    // maybeRecordStats 是 fire-and-forget
+    await Promise.resolve();
+  }
+
+  it("保存后同步更新章节字数与全库总字数", async () => {
+    // 这是统计准确性的基础：若 snapshot 不更新，记录进统计的永远是打开时的旧值
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md", "b.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+
+    await saveWithWords(120);
+
+    const snapshot = useWorkspace.getState().snapshot;
+    expect(snapshot?.chapters.find((c) => c.path === "a.md")?.words).toBe(120);
+    expect(snapshot?.totalWords).toBe(120);
+    expect(mocked.recordStats).toHaveBeenCalledWith(120);
+  });
+
+  it("未改动时保存不会写统计", async () => {
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "内容"),
+      body: "内容",
+      lastSaved: "内容",
+    });
+
+    await useWorkspace.getState().flush();
+    await Promise.resolve();
+
+    expect(mocked.recordStats).not.toHaveBeenCalled();
+  });
+
+  it("60 秒内的连续保存只写一次统计", async () => {
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+
+    await saveWithWords(100);
+    expect(mocked.recordStats).toHaveBeenCalledTimes(1);
+
+    // 时钟不动，第二次保存应被节流挡住
+    await saveWithWords(200);
+    expect(mocked.recordStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("超过节流窗口后再次写入", async () => {
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+
+    await saveWithWords(100);
+    expect(mocked.recordStats).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(Date.now() + 61_000);
+    await saveWithWords(250);
+
+    expect(mocked.recordStats).toHaveBeenCalledTimes(2);
+    expect(mocked.recordStats).toHaveBeenLastCalledWith(250);
+  });
+
+  it("统计写入失败不影响保存状态", async () => {
+    useWorkspace.setState({
+      snapshot: makeSnapshot(["a.md"]),
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+
+    mocked.recordStats.mockRejectedValue("磁盘只读");
+
+    await saveWithWords(100);
+
+    expect(useWorkspace.getState().saveState).toBe("saved");
+    expect(useWorkspace.getState().error).toBeNull();
+  });
+
+  it("loadTrend 从趋势里还原今日增量", async () => {
+    const today = new Date().toLocaleDateString("sv-SE");
+    mocked.statsHistory.mockResolvedValue([
+      { date: "2026-11-01", words: 1000, delta: 0 },
+      { date: today, words: 1450, delta: 450 },
+    ]);
+
+    await useWorkspace.getState().loadTrend();
+
+    expect(useWorkspace.getState().trend).toHaveLength(2);
+    expect(useWorkspace.getState().todayStat?.delta).toBe(450);
+  });
+
+  it("loadTrend 失败时清空趋势但不报错", async () => {
+    mocked.statsHistory.mockRejectedValue("尚未打开稿库");
+
+    await useWorkspace.getState().loadTrend();
+
+    expect(useWorkspace.getState().trend).toEqual([]);
+    expect(useWorkspace.getState().error).toBeNull();
+  });
+
+  it("toggleStats 展开时会拉取趋势", async () => {
+    mocked.statsHistory.mockResolvedValue([]);
+
+    useWorkspace.getState().toggleStats();
+    await Promise.resolve();
+
+    expect(useWorkspace.getState().statsOpen).toBe(true);
+    expect(mocked.statsHistory).toHaveBeenCalled();
+
+    useWorkspace.getState().toggleStats();
+    expect(useWorkspace.getState().statsOpen).toBe(false);
   });
 });

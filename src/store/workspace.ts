@@ -15,6 +15,8 @@ import type {
   Direction,
   DocPayload,
   SearchHit,
+  TodayStat,
+  TrendPoint,
   VaultSnapshot,
   WordCount,
 } from "../lib/types";
@@ -24,6 +26,14 @@ export const AUTOSAVE_DEBOUNCE_MS = 800;
 
 /** 专注模式的持久化 key */
 const FOCUS_KEY = "qinglai.focus.v1";
+
+/**
+ * 写作统计的写入节流间隔。
+ *
+ * 统计只关心「当日最后一次的总字数」，所以不必每次保存都写文件。
+ * 60 秒粒度足够，又能避免一分钟内敲几百次保存就写几百次 JSON。
+ */
+const STATS_THROTTLE_MS = 60_000;
 
 function readFocus(): boolean {
   try {
@@ -99,6 +109,15 @@ interface WorkspaceState {
   exportBook: (dest: string) => Promise<void>;
   dismissNotice: () => void;
 
+  /** 最近若干天的写作趋势 */
+  trend: TrendPoint[];
+  /** 今日记录（来自最近一次写入） */
+  todayStat: TodayStat | null;
+  /** 统计面板是否展开 */
+  statsOpen: boolean;
+  toggleStats: () => void;
+  loadTrend: () => Promise<void>;
+
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
   openDoc: (path: string) => Promise<void>;
@@ -136,6 +155,32 @@ function scheduleJournal(path: string, body: string) {
     journalTimer = null;
     writeJournal({ path, body, at: Date.now() });
   }, JOURNAL_DEBOUNCE_MS);
+}
+
+/** 上次写入写作统计的时刻，用于节流 */
+let lastStatsAt = 0;
+
+/**
+ * 保存成功后记录一次全库总字数。
+ *
+ * 失败时**不重置**节流时间戳：统计是附加信息，不该因为一次写盘失败就
+ * 在接下来的每次保存里反复重试。
+ */
+async function maybeRecordStats() {
+  const now = Date.now();
+  if (now - lastStatsAt < STATS_THROTTLE_MS) return;
+
+  const total = useWorkspace.getState().snapshot?.totalWords;
+  if (total === undefined) return;
+
+  lastStatsAt = now;
+  try {
+    const today = await ipc.recordStats(total);
+    useWorkspace.setState({ todayStat: today });
+    if (useWorkspace.getState().statsOpen) void useWorkspace.getState().loadTrend();
+  } catch {
+    // 静默失败，不影响写作
+  }
 }
 
 export const useWorkspace = create<WorkspaceState>()((set, get) => {
@@ -188,6 +233,9 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     error: null,
     notice: null,
     exporting: false,
+    trend: [],
+    todayStat: null,
+    statsOpen: false,
     searchQuery: "",
     searchResults: [],
     searching: false,
@@ -257,6 +305,31 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
 
     dismissNotice: () => set({ notice: null }),
 
+    toggleStats: () => {
+      const next = !get().statsOpen;
+      set({ statsOpen: next });
+      if (next) void get().loadTrend();
+    },
+
+    loadTrend: async () => {
+      try {
+        const trend = await ipc.statsHistory(30);
+        // 顺手把今日记录从趋势里还原出来，这样刚打开稿库就能看到「今日 +N 字」
+        // 本地日期用 sv-SE 格式取，正好是 YYYY-MM-DD
+        const today = new Date().toLocaleDateString("sv-SE");
+        const point = trend.find((p) => p.date === today);
+        set({
+          trend,
+          ...(point
+            ? { todayStat: { date: point.date, words: point.words, delta: point.delta } }
+            : {}),
+        });
+      } catch {
+        // 统计是附加信息，读不到就不显示，不打断写作
+        set({ trend: [] });
+      }
+    },
+
     openVault: async (path) => {
       try {
         // 换库时丢弃上一个库的残留日志：日志里的路径是相对路径，
@@ -271,6 +344,9 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         const first = snapshot.chapters[0];
         if (first) await get().openDoc(first.path);
         await get().checkJournal();
+        // 换库后趋势与今日增量都要重取，否则会显示上一个库的数据
+        void get().loadTrend();
+        set({ todayStat: null });
       } catch (err) {
         // 上次记住的目录可能已被移动或删除，别让它一直报错
         clearLastVault();
@@ -425,9 +501,26 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
         }
 
         clearJournal();
+
+        // 保存后同步更新章节清单里的字数，否则全库总字数会一直停在打开时的旧值，
+        // 而统计记录依赖这个值 —— 不更新就会把旧字数反复写进统计。
+        const snapshot = get().snapshot;
+        let nextSnapshot = snapshot;
+        if (snapshot && outcome.kind === "saved") {
+          const chapters = snapshot.chapters.map((c) =>
+            c.path === doc.path ? { ...c, words: outcome.words.total } : c,
+          );
+          nextSnapshot = {
+            ...snapshot,
+            chapters,
+            totalWords: chapters.reduce((sum, c) => sum + c.words, 0),
+          };
+        }
+
         set({
           saveState: "saved",
           lastSaved: body,
+          ...(nextSnapshot ? { snapshot: nextSnapshot } : {}),
           doc: {
             ...doc,
             stamp: outcome.stamp,
@@ -435,6 +528,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
           },
           ...(outcome.kind === "saved" ? { words: outcome.words } : {}),
         });
+
+        if (outcome.kind === "saved") void maybeRecordStats();
 
         // 保存期间又有新输入，安排下一轮
         if (get().body !== body) scheduleSave();

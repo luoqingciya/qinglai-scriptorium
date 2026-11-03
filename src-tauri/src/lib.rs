@@ -42,6 +42,8 @@ pub fn run() {
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::stats::count_words,
+            commands::stats::record_stats,
+            commands::stats::stats_history,
         ])
         .run(tauri::generate_context!())
         .expect("清籁斋启动失败");

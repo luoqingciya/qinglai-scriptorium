@@ -125,3 +125,20 @@ export interface ExportStats {
   paragraphs: number;
   bytes: number;
 }
+
+/** 趋势图上的一个点 */
+export interface TrendPoint {
+  /** YYYY-MM-DD */
+  date: string;
+  /** 当日结束时的全库总字数 */
+  words: number;
+  /** 相对上一个有记录的日子，可为负（删改） */
+  delta: number;
+}
+
+/** 今日记录结果 */
+export interface TodayStat {
+  date: string;
+  words: number;
+  delta: number;
+}

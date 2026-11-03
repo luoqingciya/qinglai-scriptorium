@@ -836,6 +836,139 @@ button {
   color: var(--accent);
 }
 
+/* 状态栏里可点击的文字项（如「全库 N 字」） */
+.status-item-button {
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.status-item-button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.status-today {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ 统计浮层 */
+
+.stats-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.stats-card {
+  width: 360px;
+  padding: 18px 20px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.stats-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.stats-title {
+  flex: 1;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.stats-close {
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  font-size: 15px;
+  color: var(--text-faint);
+  border-radius: 4px;
+}
+
+.stats-close:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.stats-summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.stats-metric {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.stats-value {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.stats-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.stats-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.stats-empty {
+  padding: 20px 0 8px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.stats-empty p {
+  margin: 0;
+}
+
+.stats-empty .hint {
+  color: var(--text-faint);
+}
+
 /* ------------------------------------------------------------ 滚动条 */
 
 ::-webkit-scrollbar {

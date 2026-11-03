@@ -25,6 +25,8 @@ export function StatusBar() {
   const toggleBacklinks = useWorkspace((s) => s.toggleBacklinks);
   const exporting = useWorkspace((s) => s.exporting);
   const exportBook = useWorkspace((s) => s.exportBook);
+  const toggleStats = useWorkspace((s) => s.toggleStats);
+  const todayStat = useWorkspace((s) => s.todayStat);
 
   const themeLabel = useTheme((s) => s.label);
   const cycleTheme = useTheme((s) => s.cycle);
@@ -51,7 +53,23 @@ export function StatusBar() {
         </>
       )}
       {snapshot && (
-        <span className="status-item">全库 {snapshot.totalWords} 字</span>
+        <button
+          type="button"
+          className="status-item status-item-button"
+          title="查看写作统计"
+          onClick={toggleStats}
+        >
+          全库 {snapshot.totalWords} 字
+        </button>
+      )}
+      {todayStat && todayStat.delta !== 0 && (
+        <>
+          <span className="status-sep" />
+          <span className="status-item status-today">
+            今日 {todayStat.delta > 0 ? "+" : ""}
+            {todayStat.delta}
+          </span>
+        </>
       )}
       <span className="status-sep" />
       <span className={`status-save is-${saveState}`}>{SAVE_LABEL[saveState]}</span>
