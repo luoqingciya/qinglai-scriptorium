@@ -1240,11 +1240,9 @@ mod tests {
     /// 仓库示例稿库的每章都应带摘要，大纲视图才有东西可看。
     #[test]
     fn 扫描仓库示例稿库的摘要() {
-        let root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/sample-vault");
-        if !root.is_dir() {
-            return; // 示例库不在时跳过
-        }
+        let Some(root) = crate::engine::test_support::sample_vault() else {
+            return;
+        };
 
         let snapshot = scan_with_docs(&root).unwrap().snapshot;
         assert_eq!(snapshot.chapters.len(), 3);

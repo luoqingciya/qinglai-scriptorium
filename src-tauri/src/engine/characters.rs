@@ -320,11 +320,9 @@ mod tests {
     /// 用仓库示例稿库跑真实链路：扫描 → 读 front matter → 聚合。
     #[test]
     fn 导出仓库示例稿库的人物() {
-        let root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/sample-vault");
-        if !root.is_dir() {
-            return; // 示例库不在时跳过
-        }
+        let Some(root) = crate::engine::test_support::sample_vault() else {
+            return;
+        };
 
         let outcome = crate::engine::vault::scan_with_docs(&root).expect("扫描示例库失败");
         let index = CharacterIndex::from_docs(&outcome.docs);
