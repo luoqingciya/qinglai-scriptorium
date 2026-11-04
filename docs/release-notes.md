@@ -63,7 +63,10 @@
 
 ## 安装
 
-从下方的 Assets 下载 `Qinglai Scriptorium_0.1.0_x64-setup.exe`，双击安装。
+从下方的 Assets 下载 `Qinglai.Scriptorium_0.1.0_x64-setup.exe`，双击安装。
+
+> 文件名里的点不是笔误：GitHub 上传资产时会把空格替换成 `.`，
+> 本地构建出来的原名是 `Qinglai Scriptorium_0.1.0_x64-setup.exe`。
 
 安装到当前用户目录，**不需要管理员权限**。安装后开始菜单与桌面会有
 「Qinglai Scriptorium」，窗口标题显示「清籁斋」。
