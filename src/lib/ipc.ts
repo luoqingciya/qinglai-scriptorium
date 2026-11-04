@@ -17,6 +17,7 @@ import type {
   PathRename,
   SaveOutcome,
   SearchHit,
+  Snapshot,
   TodayStat,
   TrendPoint,
   VaultSnapshot,
@@ -123,4 +124,19 @@ export function listCharacters(): Promise<CharacterCard[]> {
 /** 改写一章的情节摘要（只动 front matter 的 summary 行） */
 export function updateSummary(path: string, summary: string): Promise<void> {
   return invoke<void>("update_summary", { path, summary });
+}
+
+/** 某章的历史版本，最新的在前 */
+export function listVersions(path: string): Promise<Snapshot[]> {
+  return invoke<Snapshot[]>("list_versions", { path });
+}
+
+/** 读取某个版本的内容，供预览 */
+export function readVersion(hash: string): Promise<string> {
+  return invoke<string>("read_version", { hash });
+}
+
+/** 恢复到某个历史版本，返回恢复后的正文 */
+export function restoreVersion(path: string, hash: string): Promise<string> {
+  return invoke<string>("restore_version", { path, hash });
 }

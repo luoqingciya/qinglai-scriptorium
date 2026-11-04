@@ -26,6 +26,9 @@ vi.mock("../lib/ipc", () => ({
   statsHistory: vi.fn(),
   listCharacters: vi.fn(),
   updateSummary: vi.fn(),
+  listVersions: vi.fn(),
+  readVersion: vi.fn(),
+  restoreVersion: vi.fn(),
 }));
 
 import * as ipc from "../lib/ipc";
@@ -113,6 +116,8 @@ beforeEach(() => {
     statsOpen: false,
     characters: [],
     outlineOpen: false,
+    versions: [],
+    versionsOpen: false,
   });
 });
 
@@ -744,5 +749,116 @@ describe("大纲与摘要", () => {
     expect(useWorkspace.getState().outlineOpen).toBe(true);
     useWorkspace.getState().toggleOutline();
     expect(useWorkspace.getState().outlineOpen).toBe(false);
+  });
+});
+
+describe("版本历史", () => {
+  it("展开面板时加载当前章的历史", async () => {
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "正文"),
+      body: "正文",
+      lastSaved: "正文",
+    });
+    mocked.listVersions.mockResolvedValue([
+      { at: "2026-11-04T17:50:00+08:00", hash: "abc", bytes: 100 },
+    ]);
+
+    useWorkspace.getState().toggleVersions();
+    await Promise.resolve();
+
+    expect(useWorkspace.getState().versionsOpen).toBe(true);
+    expect(mocked.listVersions).toHaveBeenCalledWith("a.md");
+    expect(useWorkspace.getState().versions).toHaveLength(1);
+  });
+
+  it("与反链面板互斥", () => {
+    useWorkspace.setState({ backlinksOpen: true });
+    useWorkspace.getState().toggleVersions();
+    expect(useWorkspace.getState().backlinksOpen).toBe(false);
+    expect(useWorkspace.getState().versionsOpen).toBe(true);
+
+    useWorkspace.getState().toggleBacklinks();
+    expect(useWorkspace.getState().versionsOpen).toBe(false);
+    expect(useWorkspace.getState().backlinksOpen).toBe(true);
+  });
+
+  it("恢复前先落盘，再恢复，再重载", async () => {
+    // 顺序错了会出两个问题：未落盘的改动丢失；后端备份的是旧内容
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+    useWorkspace.getState().setBody("未保存的新内容");
+
+    mocked.saveDoc.mockResolvedValue({
+      kind: "saved",
+      stamp: { mtimeMs: 10, len: 20 },
+      words: WORDS,
+    });
+    mocked.restoreVersion.mockResolvedValue("恢复后的正文");
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "恢复后的正文"));
+    mocked.listVersions.mockResolvedValue([]);
+
+    await useWorkspace.getState().restoreVersion("a.md", "hash1");
+
+    const saveOrder = mocked.saveDoc.mock.invocationCallOrder[0] ?? 0;
+    const restoreOrder = mocked.restoreVersion.mock.invocationCallOrder[0] ?? 0;
+    const reloadOrder = mocked.readDoc.mock.invocationCallOrder[0] ?? 0;
+
+    expect(saveOrder).toBeLessThan(restoreOrder);
+    expect(restoreOrder).toBeLessThan(reloadOrder);
+
+    expect(useWorkspace.getState().body).toBe("恢复后的正文");
+    expect(useWorkspace.getState().notice).toContain("恢复");
+  });
+
+  it("恢复后重建编辑器", async () => {
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+      docEpoch: 3,
+    });
+
+    mocked.restoreVersion.mockResolvedValue("新正文");
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "新正文"));
+    mocked.listVersions.mockResolvedValue([]);
+
+    await useWorkspace.getState().restoreVersion("a.md", "hash1");
+
+    // docEpoch 变化才会让 EditorPane 重建，否则编辑器里还是旧内容
+    expect(useWorkspace.getState().docEpoch).toBeGreaterThan(3);
+  });
+
+  it("恢复失败时报错且不动编辑器", async () => {
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "原文"),
+      body: "原文",
+      lastSaved: "原文",
+    });
+    mocked.restoreVersion.mockRejectedValue("找不到版本 abc，可能已被清理");
+
+    await useWorkspace.getState().restoreVersion("a.md", "abc");
+
+    expect(useWorkspace.getState().error).toContain("可能已被清理");
+    expect(useWorkspace.getState().body).toBe("原文");
+    expect(useWorkspace.getState().notice).toBeNull();
+  });
+
+  it("收起面板时清空列表", () => {
+    useWorkspace.setState({
+      versionsOpen: true,
+      versions: [{ at: "2026-11-04T17:50:00+08:00", hash: "a", bytes: 1 }],
+    });
+
+    useWorkspace.getState().toggleVersions();
+
+    expect(useWorkspace.getState().versionsOpen).toBe(false);
+    expect(useWorkspace.getState().versions).toEqual([]);
   });
 });

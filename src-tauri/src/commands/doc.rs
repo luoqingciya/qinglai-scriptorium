@@ -3,6 +3,7 @@
 //! 保存路径的核心原则：**只替换正文，front matter 字节不动**。
 //! 这样无论 YAML 序列化器如何演进，用户手写的元数据都不会漂移。
 
+use chrono::Local;
 use serde::Serialize;
 use tauri::State;
 
@@ -86,6 +87,11 @@ pub fn save_doc(
     }
 
     let next = md::replace_body(&original, &body);
+
+    // 快照存的是「即将被覆盖的旧正文」。失败不阻断保存：
+    // 内容安全优先于历史记录，历史只是附加能力。
+    let _ = crate::engine::versions::record(&root, &path, split.body, Local::now());
+
     atomic::write_atomic(&abs, next.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
 
     // 两个索引都做增量更新，否则刚写完就搜索/查反链会读到旧内容。
@@ -107,4 +113,70 @@ pub fn save_doc(
         stamp,
         words: md::count_words(&body, config.count_punctuation),
     })
+}
+
+/// 列出某章的历史版本，最新的在前。
+#[tauri::command]
+pub fn list_versions(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::engine::versions::Snapshot>, String> {
+    let root = require_root(&state)?;
+    // 只校验路径合法性，不要求文件当前存在（已删除的章也可能有历史）
+    crate::engine::vault::safe_join(&root, &path)
+        .ok_or_else(|| format!("非法路径：{path}"))?;
+
+    Ok(crate::engine::versions::list(&root, &path))
+}
+
+/// 读取某个版本的内容，供预览。
+#[tauri::command]
+pub fn read_version(hash: String, state: State<'_, AppState>) -> Result<String, String> {
+    let root = require_root(&state)?;
+    crate::engine::versions::read_version(&root, &hash)
+        .ok_or_else(|| format!("找不到版本 {hash}，可能已被清理"))
+}
+
+/// 恢复到某个历史版本，返回恢复后的正文。
+///
+/// 恢复前会把**当前正文强制存一档**（不受 5 分钟节流限制），
+/// 所以「恢复错了」还能再退回来。
+///
+/// 只替换正文，front matter 保留当前值 —— `id`、`order` 这些由系统维护，
+/// 跟着回退反而会出问题。
+#[tauri::command]
+pub fn restore_version(
+    path: String,
+    hash: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let root = require_root(&state)?;
+    let abs = crate::engine::vault::safe_join(&root, &path)
+        .ok_or_else(|| format!("非法路径：{path}"))?;
+
+    let content = crate::engine::versions::read_version(&root, &hash)
+        .ok_or_else(|| format!("找不到版本 {hash}，可能已被清理"))?;
+
+    let original = std::fs::read_to_string(&abs).map_err(|e| format!("读取原文件失败：{e}"))?;
+    let split = md::split(&original);
+
+    // 先存当前内容，再覆盖。顺序不能反：反了就是「先毁掉再备份」。
+    let _ = crate::engine::versions::record_forced(&root, &path, split.body, Local::now());
+
+    let next = md::replace_body(&original, &content);
+    atomic::write_atomic(&abs, next.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
+
+    // 索引跟着更新，否则恢复后搜索与反链仍是旧内容
+    let input = engine_search::DocInput::from_text(path.clone(), &next);
+    if let Ok(mut index) = state.index.lock() {
+        index.upsert(input.clone());
+    }
+    if let Ok(mut links) = state.links.lock() {
+        links.upsert(&input);
+    }
+    if let Ok(mut characters) = state.characters.lock() {
+        characters.upsert(&input);
+    }
+
+    Ok(content)
 }
