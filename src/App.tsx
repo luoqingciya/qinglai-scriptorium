@@ -6,6 +6,7 @@ import { Explorer } from "./features/explorer/Explorer";
 import { OutlineView } from "./features/outline/OutlineView";
 import { StatsPanel } from "./features/stats/StatsPanel";
 import { StatusBar } from "./features/statusbar/StatusBar";
+import { VersionPanel } from "./features/versions/VersionPanel";
 import { useWorkspace } from "./store/workspace";
 
 function formatTime(at: number): string {
@@ -29,6 +30,7 @@ export default function App() {
   const backlinksOpen = useWorkspace((s) => s.backlinksOpen);
   const statsOpen = useWorkspace((s) => s.statsOpen);
   const outlineOpen = useWorkspace((s) => s.outlineOpen);
+  const versionsOpen = useWorkspace((s) => s.versionsOpen);
 
   // 启动时恢复上次打开的稿库，并检查有无崩溃残留
   useEffect(() => {
@@ -64,7 +66,9 @@ export default function App() {
 
   return (
     <div
-      className={`app${focusMode ? " is-focus" : ""}${backlinksOpen && doc ? " has-backlinks" : ""}`}
+      className={`app${focusMode ? " is-focus" : ""}${
+        (backlinksOpen || versionsOpen) && doc ? " has-side" : ""
+      }`}
     >
       {!focusMode && <Explorer />}
 
@@ -114,6 +118,8 @@ export default function App() {
       </main>
 
       {backlinksOpen && doc && <BacklinkPanel />}
+
+      {versionsOpen && doc && <VersionPanel />}
 
       {statsOpen && <StatsPanel />}
 

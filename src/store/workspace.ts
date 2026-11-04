@@ -16,6 +16,7 @@ import type {
   Direction,
   DocPayload,
   SearchHit,
+  Snapshot,
   TodayStat,
   TrendPoint,
   VaultSnapshot,
@@ -128,6 +129,14 @@ interface WorkspaceState {
   toggleOutline: () => void;
   /** 改写某章的情节摘要 */
   setSummary: (path: string, summary: string) => Promise<void>;
+
+  /** 当前章的历史版本，最新的在前 */
+  versions: Snapshot[];
+  versionsOpen: boolean;
+  toggleVersions: () => void;
+  loadVersions: (path: string) => Promise<void>;
+  /** 恢复到某个历史版本 */
+  restoreVersion: (path: string, hash: string) => Promise<void>;
 
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -249,6 +258,8 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     statsOpen: false,
     characters: [],
     outlineOpen: false,
+    versions: [],
+    versionsOpen: false,
     searchQuery: "",
     searchResults: [],
     searching: false,
@@ -262,7 +273,9 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
       set({ focusMode: next });
     },
 
-    toggleBacklinks: () => set({ backlinksOpen: !get().backlinksOpen }),
+    toggleBacklinks: () =>
+      // 与版本面板互斥，避免两个右侧面板同时占据编辑区宽度
+      set({ backlinksOpen: !get().backlinksOpen, versionsOpen: false }),
 
     loadBacklinks: async (path) => {
       try {
@@ -335,6 +348,47 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     },
 
     toggleOutline: () => set({ outlineOpen: !get().outlineOpen }),
+
+    toggleVersions: () => {
+      const next = !get().versionsOpen;
+      // 两个右侧面板互斥，否则 280px 侧栏旁边再挤一个会没地方写字
+      set({ versionsOpen: next, backlinksOpen: false, versions: next ? get().versions : [] });
+      if (next) {
+        const path = get().activePath;
+        if (path) void get().loadVersions(path);
+      }
+    },
+
+    loadVersions: async (path) => {
+      try {
+        const versions = await ipc.listVersions(path);
+        set({ versions });
+      } catch {
+        // 版本历史是附加能力，读不到就留空
+        set({ versions: [] });
+      }
+    },
+
+    /**
+     * 恢复历史版本。
+     *
+     * 先 flush：恢复会覆盖文件，当前未落盘的改动必须先写下去，
+     * 否则后端 `record_forced` 存的是旧内容，「恢复前备份」就备份错了东西。
+     *
+     * 恢复后用 `loadDoc` 强制重载（不能走 openDoc —— 它遇到同章会直接返回），
+     * 让编辑器重建并拿到新的文件戳。
+     */
+    restoreVersion: async (path, hash) => {
+      try {
+        await get().flush();
+        await ipc.restoreVersion(path, hash);
+        await loadDoc(path);
+        await get().loadVersions(path);
+        set({ notice: "已恢复到所选版本" });
+      } catch (err) {
+        set({ error: String(err) });
+      }
+    },
 
     /**
      * 改写情节摘要。
