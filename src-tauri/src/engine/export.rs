@@ -637,11 +637,9 @@ mod tests {
     /// 剥 front matter → 导出，能覆盖目录结构、元数据与双链的真实组合。
     #[test]
     fn 导出仓库示例稿库() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/sample-vault");
-        if !root.is_dir() {
-            // 示例库不在时跳过，不让 CI 因数据文件缺失而红
+        let Some(root) = crate::engine::test_support::sample_vault() else {
             return;
-        }
+        };
 
         let outcome = crate::engine::vault::scan_with_docs(&root).expect("扫描示例库失败");
         let chapters: Vec<ChapterInput> = outcome
