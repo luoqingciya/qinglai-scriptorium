@@ -162,3 +162,13 @@ export interface CharacterCard {
   /** 其中作为视角人物的章数 */
   povCount: number;
 }
+
+/** 一章的历史版本（存的是被覆盖的旧正文） */
+export interface Snapshot {
+  /** 记录时刻，RFC 3339 本地时间 */
+  at: string;
+  /** 内容 sha256，用于取回内容 */
+  hash: string;
+  /** 正文字节数 */
+  bytes: number;
+}

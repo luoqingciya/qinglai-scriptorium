@@ -29,6 +29,8 @@ export function StatusBar() {
   const todayStat = useWorkspace((s) => s.todayStat);
   const outlineOpen = useWorkspace((s) => s.outlineOpen);
   const toggleOutline = useWorkspace((s) => s.toggleOutline);
+  const versionsOpen = useWorkspace((s) => s.versionsOpen);
+  const toggleVersions = useWorkspace((s) => s.toggleVersions);
 
   const themeLabel = useTheme((s) => s.label);
   const cycleTheme = useTheme((s) => s.cycle);
@@ -85,6 +87,15 @@ export function StatusBar() {
             onClick={toggleBacklinks}
           >
             反链 {backlinkTotal}
+          </button>
+          <span className="status-sep" />
+          <button
+            type="button"
+            className={`status-button${versionsOpen ? " is-on" : ""}`}
+            title="查看本章历史版本"
+            onClick={toggleVersions}
+          >
+            历史
           </button>
         </>
       )}
