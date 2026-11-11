@@ -72,7 +72,7 @@ pub struct ExportStats {
 ///
 /// 导出的文档是给稿库之外的人看的，双链语法在那里只是噪音。
 /// 有别名用别名，没有就用目标标题。
-fn strip_wikilinks(text: &str) -> String {
+pub(crate) fn strip_wikilinks(text: &str) -> String {
     if !text.contains("[[") {
         return text.to_string();
     }

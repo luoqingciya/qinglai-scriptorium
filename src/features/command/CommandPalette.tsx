@@ -127,6 +127,23 @@ export function CommandPalette() {
         },
       },
       {
+        id: "action.exportEpub",
+        title: "导出全库为 epub",
+        keywords: "export epub ebook 电子书 阅读器",
+        category: "操作",
+        run: async () => {
+          close();
+          const dest = await save({
+            title: "导出全库为 EPUB 电子书",
+            defaultPath: `${useWorkspace.getState().snapshot?.title ?? "未命名"}.epub`,
+            filters: [{ name: "EPUB 电子书", extensions: ["epub"] }],
+          });
+          if (typeof dest === "string") {
+            await useWorkspace.getState().exportBook(dest, "epub");
+          }
+        },
+      },
+      {
         id: "action.search",
         title: "搜索全库",
         keywords: "search find 全文 检索",

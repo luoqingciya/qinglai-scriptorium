@@ -37,13 +37,19 @@ export function StatusBar() {
 
   const backlinkTotal = backlinks.reduce((sum, hit) => sum + hit.count, 0);
 
-  async function onExport() {
+  async function onExport(format: "docx" | "epub") {
+    const isEpub = format === "epub";
     const dest = await save({
-      title: "导出全库为 Word 文档",
-      defaultPath: `${snapshot?.title ?? "未命名"}.docx`,
-      filters: [{ name: "Word 文档", extensions: ["docx"] }],
+      title: isEpub ? "导出全库为 EPUB 电子书" : "导出全库为 Word 文档",
+      defaultPath: `${snapshot?.title ?? "未命名"}.${format}`,
+      filters: [
+        {
+          name: isEpub ? "EPUB 电子书" : "Word 文档",
+          extensions: [format],
+        },
+      ],
     });
-    if (typeof dest === "string") await exportBook(dest);
+    if (typeof dest === "string") await exportBook(dest, format);
   }
 
   return (
@@ -117,9 +123,20 @@ export function StatusBar() {
           className="status-button"
           title="导出全库为 Word 文档（宋体小四、1.5 倍行距、首行缩进 2 字符）"
           disabled={exporting}
-          onClick={() => void onExport()}
+          onClick={() => void onExport("docx")}
         >
           {exporting ? "导出中…" : "导出 docx"}
+        </button>
+      )}
+      {snapshot && (
+        <button
+          type="button"
+          className="status-button"
+          title="导出全库为 EPUB 3.0 电子书（分卷目录、段首缩进 2 字符）"
+          disabled={exporting}
+          onClick={() => void onExport("epub")}
+        >
+          导出 epub
         </button>
       )}
       <span className="status-sep" />

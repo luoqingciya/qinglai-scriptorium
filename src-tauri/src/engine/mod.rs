@@ -1,5 +1,6 @@
 pub mod atomic;
 pub mod characters;
+pub mod epub;
 pub mod export;
 pub mod links;
 pub mod md;

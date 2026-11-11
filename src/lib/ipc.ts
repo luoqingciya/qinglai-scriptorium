@@ -106,6 +106,11 @@ export function exportDocx(
   return invoke<ExportStats>("export_docx", { paths, dest, options });
 }
 
+/** 导出全库为 EPUB 3.0 电子书（章节顺序与目录树一致） */
+export function exportEpub(dest: string): Promise<ExportStats> {
+  return invoke<ExportStats>("export_epub", { dest });
+}
+
 /** 记录一次当前全库总字数，返回今日累计 */
 export function recordStats(totalWords: number): Promise<TodayStat> {
   return invoke<TodayStat>("record_stats", { totalWords });

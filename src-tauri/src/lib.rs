@@ -43,6 +43,7 @@ pub fn run() {
             commands::links::resolve_link,
             commands::characters::list_characters,
             commands::export::export_docx,
+            commands::export::export_epub,
             commands::doc::read_doc,
             commands::doc::save_doc,
             commands::doc::list_versions,

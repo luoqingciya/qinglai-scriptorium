@@ -22,6 +22,7 @@ vi.mock("../lib/ipc", () => ({
   danglingLinks: vi.fn(),
   resolveLink: vi.fn(),
   exportDocx: vi.fn(),
+  exportEpub: vi.fn(),
   recordStats: vi.fn(),
   statsHistory: vi.fn(),
   listCharacters: vi.fn(),
@@ -446,6 +447,48 @@ describe("导出 docx", () => {
     expect(useWorkspace.getState().error).toContain("磁盘已满");
     expect(useWorkspace.getState().exporting).toBe(false);
     expect(useWorkspace.getState().notice).toBeNull();
+  });
+
+  it("导出 epub 走独立通道且不碰 docx", async () => {
+    mocked.exportEpub.mockResolvedValue({ chapters: 3, paragraphs: 12, bytes: 8192 });
+
+    await useWorkspace.getState().exportBook("C:/tmp/out.epub", "epub");
+
+    expect(mocked.exportEpub).toHaveBeenCalledWith("C:/tmp/out.epub");
+    expect(mocked.exportDocx).not.toHaveBeenCalled();
+    expect(useWorkspace.getState().notice).toContain("EPUB");
+    expect(useWorkspace.getState().notice).toContain("3 章");
+  });
+
+  it("导出 epub 前同样先落盘", async () => {
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "旧"),
+      body: "旧",
+      lastSaved: "旧",
+    });
+    useWorkspace.getState().setBody("未保存的新段");
+    mocked.saveDoc.mockResolvedValue({
+      kind: "saved",
+      stamp: { mtimeMs: 3, len: 9 },
+      words: WORDS,
+    });
+    mocked.exportEpub.mockResolvedValue({ chapters: 1, paragraphs: 1, bytes: 1024 });
+
+    await useWorkspace.getState().exportBook("C:/tmp/out.epub", "epub");
+
+    const saveOrder = mocked.saveDoc.mock.invocationCallOrder[0] ?? 0;
+    const exportOrder = mocked.exportEpub.mock.invocationCallOrder[0] ?? 0;
+    expect(saveOrder).toBeLessThan(exportOrder);
+  });
+
+  it("缺省格式仍是 docx", async () => {
+    mocked.exportDocx.mockResolvedValue({ chapters: 1, paragraphs: 1, bytes: 1024 });
+
+    await useWorkspace.getState().exportBook("C:/tmp/out.docx");
+
+    expect(mocked.exportDocx).toHaveBeenCalled();
+    expect(mocked.exportEpub).not.toHaveBeenCalled();
   });
 });
 

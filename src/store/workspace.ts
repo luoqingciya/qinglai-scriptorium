@@ -108,7 +108,7 @@ interface WorkspaceState {
   /** 正在导出 docx */
   exporting: boolean;
   /** 导出全库为 docx，`dest` 由系统保存对话框提供 */
-  exportBook: (dest: string) => Promise<void>;
+  exportBook: (dest: string, format?: "docx" | "epub") => Promise<void>;
   dismissNotice: () => void;
 
   /** 最近若干天的写作趋势 */
@@ -319,15 +319,23 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
      * 必须先 `flush()`：导出读的是磁盘，若当前章还有未落盘的改动，
      * 导出的就是旧内容 —— 这种错误用户很难发现，因为文件看起来是「成功生成」的。
      */
-    exportBook: async (dest) => {
+    /**
+     * 导出全库。`format` 缺省为 docx，epub 走另一套打包但共用同一份
+     * flush / exporting / notice 流程，避免两条路径的行为慢慢分叉。
+     */
+    exportBook: async (dest, format = "docx") => {
       set({ exporting: true, notice: null });
       try {
         await get().flush();
-        const stats = await ipc.exportDocx([], dest);
+        const stats =
+          format === "epub"
+            ? await ipc.exportEpub(dest)
+            : await ipc.exportDocx([], dest);
         const kb = Math.max(1, Math.round(stats.bytes / 1024));
+        const label = format === "epub" ? "EPUB" : "DOCX";
         set({
           exporting: false,
-          notice: `已导出 ${stats.chapters} 章、${stats.paragraphs} 段（约 ${kb} KB）`,
+          notice: `已导出 ${label}：${stats.chapters} 章、${stats.paragraphs} 段（约 ${kb} KB）`,
         });
       } catch (err) {
         set({ exporting: false, error: String(err) });
