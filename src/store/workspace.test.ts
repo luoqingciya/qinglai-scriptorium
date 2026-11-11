@@ -118,6 +118,7 @@ beforeEach(() => {
     outlineOpen: false,
     versions: [],
     versionsOpen: false,
+    paletteOpen: false,
   });
 });
 
@@ -860,5 +861,56 @@ describe("版本历史", () => {
 
     expect(useWorkspace.getState().versionsOpen).toBe(false);
     expect(useWorkspace.getState().versions).toEqual([]);
+  });
+});
+describe("命令面板", () => {
+  it("setPaletteOpen 控制开关", () => {
+    expect(useWorkspace.getState().paletteOpen).toBe(false);
+
+    useWorkspace.getState().setPaletteOpen(true);
+    expect(useWorkspace.getState().paletteOpen).toBe(true);
+
+    useWorkspace.getState().setPaletteOpen(false);
+    expect(useWorkspace.getState().paletteOpen).toBe(false);
+  });
+
+  it("切章不影响面板状态", async () => {
+    mocked.scanVault.mockResolvedValue(makeSnapshot(["a.md", "b.md"]));
+    useWorkspace.setState({ paletteOpen: true });
+
+    await useWorkspace.getState().refresh();
+
+    expect(useWorkspace.getState().paletteOpen).toBe(true);
+  });
+
+  it("从大纲里跳转章节会退出大纲视图", async () => {
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "甲"),
+      body: "甲",
+      lastSaved: "甲",
+      outlineOpen: true,
+    });
+    mocked.readDoc.mockResolvedValue(makeDoc("b.md", "乙"));
+
+    await useWorkspace.getState().openDoc("b.md");
+
+    expect(useWorkspace.getState().outlineOpen).toBe(false);
+    expect(useWorkspace.getState().activePath).toBe("b.md");
+  });
+
+  it("同一章在大纲打开时点一次也能回到编辑区", async () => {
+    useWorkspace.setState({
+      activePath: "a.md",
+      doc: makeDoc("a.md", "甲"),
+      body: "甲",
+      lastSaved: "甲",
+      outlineOpen: true,
+    });
+    mocked.readDoc.mockResolvedValue(makeDoc("a.md", "甲"));
+
+    await useWorkspace.getState().openDoc("a.md");
+
+    expect(useWorkspace.getState().outlineOpen).toBe(false);
   });
 });
