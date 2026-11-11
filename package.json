@@ -2,6 +2,7 @@
   "name": "qinglai-scriptorium",
   "private": true,
   "version": "0.1.0",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "description": "清籁斋 · 面向长篇小说与笔记的个人写作工作台",
   "scripts": {
