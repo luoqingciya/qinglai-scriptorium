@@ -1,4 +1,4 @@
-//! 导出 docx。
+//! 导出 docx 与 epub。
 //!
 //! 与读写 command 不同，这里的 `dest` 是**绝对路径**：导出目标通常落在稿库之外
 //! （桌面、投稿目录），不能套用 `safe_join`。路径来自前端调起的系统保存对话框，
@@ -77,6 +77,51 @@ pub fn export_docx(
 
     crate::engine::atomic::write_atomic(dest_path, &bytes)
         .map_err(|e| format!("写入 docx 失败：{e}"))?;
+
+    Ok(stats)
+}
+
+/// 导出全库为 EPUB 3.0 电子书。
+///
+/// 与 docx 不同，这里不支持指定章节：成书本来就是全库，且目录需要 `dir`
+/// 来还原卷层级，直接取 `scan_with_docs` 的结果最省一次磁盘遍历
+/// （`docs` 里已经带 path / title / dir / body）。
+#[tauri::command]
+pub fn export_epub(dest: String, state: State<'_, AppState>) -> Result<ExportStats, String> {
+    let root = require_root(&state)?;
+
+    if !dest.to_lowercase().ends_with(".epub") {
+        return Err("导出文件必须以 .epub 结尾".to_string());
+    }
+    let dest_path = Path::new(&dest);
+    if let Some(parent) = dest_path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.is_dir() {
+            return Err(format!("目标目录不存在：{}", parent.display()));
+        }
+    }
+
+    let outcome = crate::engine::vault::scan_with_docs(&root)?;
+    let chapters: Vec<crate::engine::epub::EpubChapter> = outcome
+        .docs
+        .iter()
+        .map(|d| crate::engine::epub::EpubChapter {
+            title: d.title.clone(),
+            dir: d.dir.clone(),
+            body: d.body.clone(),
+        })
+        .collect();
+
+    let config = crate::engine::vault::load_config(&root);
+    let book_title = config.title.unwrap_or_else(|| {
+        root.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "未命名".to_string())
+    });
+
+    let (bytes, stats) = crate::engine::epub::build(&book_title, &chapters)?;
+
+    crate::engine::atomic::write_atomic(dest_path, &bytes)
+        .map_err(|e| format!("写入 epub 失败：{e}"))?;
 
     Ok(stats)
 }
