@@ -138,6 +138,10 @@ interface WorkspaceState {
   /** 恢复到某个历史版本 */
   restoreVersion: (path: string, hash: string) => Promise<void>;
 
+  /** 命令面板（Ctrl/Cmd + K） */
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
+
   openVault: (path: string) => Promise<void>;
   refresh: () => Promise<void>;
   openDoc: (path: string) => Promise<void>;
@@ -260,6 +264,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     outlineOpen: false,
     versions: [],
     versionsOpen: false,
+    paletteOpen: false,
     searchQuery: "",
     searchResults: [],
     searching: false,
@@ -348,6 +353,7 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     },
 
     toggleOutline: () => set({ outlineOpen: !get().outlineOpen }),
+    setPaletteOpen: (open) => set({ paletteOpen: open }),
 
     toggleVersions: () => {
       const next = !get().versionsOpen;
@@ -517,9 +523,13 @@ export const useWorkspace = create<WorkspaceState>()((set, get) => {
     },
 
     openDoc: async (path) => {
-      if (get().activePath === path) return;
+      // 打开章节意味着「要编辑它」。若大纲视图正占据主区域，先退出来，
+      // 否则跳过去之后屏幕上还是大纲，看起来像跳转没生效。
+      const outlineOpen = get().outlineOpen;
+      if (get().activePath === path && !outlineOpen) return;
       // 切章之前必须把当前章的改动落盘，否则会丢字
       await get().flush();
+      if (outlineOpen) set({ outlineOpen: false });
       await loadDoc(path);
     },
 

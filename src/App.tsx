@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { BacklinkPanel } from "./features/backlinks/BacklinkPanel";
+import { CommandPalette } from "./features/command/CommandPalette";
 import { EditorPane } from "./features/editor/EditorPane";
 import { Explorer } from "./features/explorer/Explorer";
 import { OutlineView } from "./features/outline/OutlineView";
@@ -31,6 +32,7 @@ export default function App() {
   const statsOpen = useWorkspace((s) => s.statsOpen);
   const outlineOpen = useWorkspace((s) => s.outlineOpen);
   const versionsOpen = useWorkspace((s) => s.versionsOpen);
+  const paletteOpen = useWorkspace((s) => s.paletteOpen);
 
   // 启动时恢复上次打开的稿库，并检查有无崩溃残留
   useEffect(() => {
@@ -58,6 +60,22 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Ctrl/Cmd + K 打开命令面板。
+  // 监听放在捕获阶段：Milkdown 把 Ctrl+K 当作「插入链接」，
+  // 若等事件冒泡到 window，编辑器已经先处理了。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        e.stopPropagation();
+        const s = useWorkspace.getState();
+        s.setPaletteOpen(!s.paletteOpen);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   const recoveryTitle = recovery
@@ -122,6 +140,8 @@ export default function App() {
       {versionsOpen && doc && <VersionPanel />}
 
       {statsOpen && <StatsPanel />}
+
+      {paletteOpen && <CommandPalette />}
 
       <StatusBar />
     </div>
